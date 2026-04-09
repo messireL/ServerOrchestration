@@ -1,0 +1,56 @@
+name: Publish backend image to GHCR
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'app/backend/**'
+      - '.github/workflows/publish-backend-image.yml'
+      - 'deploy/stack.env.example'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Read version from stack.env.example
+        id: version
+        run: |
+          APP_VERSION="$(grep '^APP_VERSION=' deploy/stack.env.example | cut -d'=' -f2)"
+          echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/messirel/serverorchestration-backend
+          tags: |
+            type=raw,value=${{ steps.version.outputs.app_version }}
+            type=sha,format=short
+            type=raw,value=latest
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app/backend
+          file: ./app/backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

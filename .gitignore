@@ -1,0 +1,24 @@
+# Secrets
+deploy/stack.env
+deploy/.env
+.env
+.env.*
+
+# Runtime
+logs/
+backups/
+tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
