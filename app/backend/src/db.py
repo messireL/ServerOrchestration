@@ -45,7 +45,7 @@ def init_db() -> None:
                     name TEXT NOT NULL UNIQUE,
                     host TEXT NOT NULL,
                     ssh_port INTEGER NOT NULL DEFAULT 22,
-                    ssh_user TEXT NOT NULL DEFAULT 'root',
+                    ssh_user TEXT NOT NULL DEFAULT 'srvops',
                     description TEXT,
                     is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
                     has_3xui BOOLEAN NOT NULL DEFAULT FALSE,
@@ -55,6 +55,7 @@ def init_db() -> None:
                 );
                 """
             )
+            cur.execute("ALTER TABLE servers ALTER COLUMN ssh_user SET DEFAULT 'srvops';")
 
             cur.execute(
                 """
@@ -85,19 +86,8 @@ def init_db() -> None:
                 );
                 """
             )
-
-            cur.execute(
-                """
-                ALTER TABLE server_status
-                ADD COLUMN IF NOT EXISTS ping_latency_ms INTEGER;
-                """
-            )
-            cur.execute(
-                """
-                ALTER TABLE server_status
-                ADD COLUMN IF NOT EXISTS last_error TEXT;
-                """
-            )
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS ping_latency_ms INTEGER;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS last_error TEXT;")
 
             cur.execute(
                 """
@@ -116,7 +106,6 @@ def init_db() -> None:
                 );
                 """
             )
-
             cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_alerts_server_status
@@ -193,6 +182,8 @@ def list_server_status() -> list[dict[str, Any]]:
                     s.ssh_port,
                     s.ssh_user,
                     s.is_enabled,
+                    s.has_3xui,
+                    s.has_ssl_monitoring,
                     st.ping_ok,
                     st.ping_latency_ms,
                     st.ssh_ok,
@@ -258,7 +249,6 @@ def create_server(
                 (name, host, ssh_port, ssh_user, description, is_enabled, has_3xui, has_ssl_monitoring),
             )
             row = cur.fetchone()
-
             cur.execute(
                 """
                 INSERT INTO server_status (server_id)
@@ -267,9 +257,57 @@ def create_server(
                 """,
                 (row["id"],),
             )
-
         conn.commit()
         return row
+
+
+def update_server(
+    server_id: int,
+    name: str,
+    host: str,
+    ssh_port: int,
+    ssh_user: str,
+    description: str | None,
+    is_enabled: bool,
+    has_3xui: bool,
+    has_ssl_monitoring: bool,
+):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE servers
+                SET
+                    name = %s,
+                    host = %s,
+                    ssh_port = %s,
+                    ssh_user = %s,
+                    description = %s,
+                    is_enabled = %s,
+                    has_3xui = %s,
+                    has_ssl_monitoring = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (name, host, ssh_port, ssh_user, description, is_enabled, has_3xui, has_ssl_monitoring, server_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Сервер #{server_id} не найден")
+        conn.commit()
+        return row
+
+
+def delete_server(server_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM servers WHERE id = %s RETURNING id, name;", (server_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Сервер #{server_id} не найден")
+        conn.commit()
+        return {"id": row["id"], "name": row["name"], "deleted": True}
 
 
 def list_groups() -> list[dict[str, Any]]:
@@ -308,6 +346,36 @@ def create_group(name: str, description: str | None):
         return row
 
 
+def update_group(group_id: int, name: str, description: str | None):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE server_groups
+                SET name = %s, description = %s
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (name, description, group_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Группа #{group_id} не найдена")
+        conn.commit()
+        return row
+
+
+def delete_group(group_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM server_groups WHERE id = %s RETURNING id, name;", (group_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Группа #{group_id} не найдена")
+        conn.commit()
+        return {"id": row["id"], "name": row["name"], "deleted": True}
+
+
 def attach_server_to_group(group_id: int, server_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -321,6 +389,41 @@ def attach_server_to_group(group_id: int, server_id: int):
             )
         conn.commit()
     return {"group_id": group_id, "server_id": server_id, "linked": True}
+
+
+def detach_server_from_group(group_id: int, server_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM server_group_members WHERE group_id = %s AND server_id = %s RETURNING group_id, server_id;",
+                (group_id, server_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("Связь сервер↔группа не найдена")
+        conn.commit()
+    return {"group_id": row["group_id"], "server_id": row["server_id"], "deleted": True}
+
+
+def list_group_links() -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    gm.group_id,
+                    gm.server_id,
+                    g.name AS group_name,
+                    s.name AS server_name,
+                    s.host AS server_host,
+                    gm.created_at
+                FROM server_group_members gm
+                JOIN server_groups g ON g.id = gm.group_id
+                JOIN servers s ON s.id = gm.server_id
+                ORDER BY g.name, s.name;
+                """
+            )
+            return cur.fetchall()
 
 
 def list_enabled_servers() -> list[dict[str, Any]]:
