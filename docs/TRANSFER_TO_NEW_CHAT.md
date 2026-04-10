@@ -17,13 +17,19 @@
 - alerting (email / Telegram)
 - проверка 3x-ui console/subscription
 - проверка SSL, timezone, apt, reboot, журналы UFW/SSH
+- обязательная версионность релизов и папка `docs/releases/<версия>/`
 
-Правило релизов:
-- каждый релиз имеет свою версию
-- в каждом релизе ведутся изменения и баги в `docs/releases/<версия>/`
-- версия хранится в файле `VERSION`
-- для Portainer не требуется вручную задавать `APP_VERSION`
+Текущий подтверждённый рабочий релиз до этого шага:
+- `0.1.3` — GitHub + Portainer deploy подтверждён, backend/DB/version/summary работают.
 
-- По умолчанию проект использует timezone `Europe/Moscow`.
-- Для Portainer stack переменная `BACKEND_IMAGE` больше не требуется.
-- Если image в GHCR private, нужен отдельный доступ к registry или package должен быть public.
+Текущий релиз в работе:
+- `0.1.4`
+- добавлен read-only web dashboard `/`
+- добавлены `alerts`
+- добавлен ручной `ping probe` через API и web-интерфейс
+- результаты ping сохраняются в `server_status`
+
+Важные правила:
+- timezone по умолчанию: `Europe/Moscow`
+- в Portainer не нужно задавать `APP_VERSION`
+- серверы в рабочем контуре будем заводить позже через отдельный web-интерфейс inventory, не через curl

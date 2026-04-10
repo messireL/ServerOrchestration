@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-ARG APP_VERSION=0.1.3
+ARG APP_VERSION=0.1.4
 
 LABEL org.opencontainers.image.title="ServerOrchestration Backend"       org.opencontainers.image.description="Backend API for ServerOrchestration"       org.opencontainers.image.source="https://github.com/messireL/ServerOrchestration"       org.opencontainers.image.version="${APP_VERSION}"
 
@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1     PYTHONUNBUFFERED=1     PIP_NO_CACHE_DIR=1     
 
 WORKDIR ${APP_HOME}
 
-RUN apt-get update     && apt-get install -y --no-install-recommends curl     && rm -rf /var/lib/apt/lists/*     && groupadd --system app     && useradd --system --gid app --create-home --home-dir ${APP_HOME} app
+RUN apt-get update     && apt-get install -y --no-install-recommends curl iputils-ping     && rm -rf /var/lib/apt/lists/*     && groupadd --system app     && useradd --system --gid app --create-home --home-dir ${APP_HOME} app
 
 COPY requirements.txt ${APP_HOME}/requirements.txt
 RUN pip install --upgrade pip && pip install -r ${APP_HOME}/requirements.txt
