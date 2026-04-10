@@ -1,460 +1,420 @@
-const endpoints = {
-  version: '/version',
-  summary: '/api/summary',
-  statuses: '/api/status/servers',
-  alerts: '/api/alerts',
-  groups: '/api/groups',
-  groupLinks: '/api/group-links',
-  servers: '/api/servers',
-  pingRun: '/api/probes/ping/run',
-};
-
-const tabMeta = {
-  dashboard: { title: 'Главная', lead: 'Сводка по инфраструктуре, status-карточки и быстрые действия.' },
-  servers: { title: 'Серверы', lead: 'Добавление, редактирование и сопровождение inventory серверов.' },
-  groups: { title: 'Группы', lead: 'Группировка серверов под будущие сценарии, maintenance windows и Ansible-действия.' },
-  checks: { title: 'Проверки', lead: 'Запуск доступных probe и единая таблица текущих status-данных.' },
-  alerts: { title: 'Оповещения', lead: 'Активные alerts отдельно, чтобы проблемы не тонули в общем списке.' },
-  roadmap: { title: 'Дальше', lead: 'Roadmap ближайших доработок и основные архитектурные ориентиры проекта.' },
-};
-
 const state = {
   version: null,
   summary: null,
+  servers: [],
+  groups: [],
   statuses: [],
   alerts: [],
-  groups: [],
-  servers: [],
   groupLinks: [],
   serverSearch: '',
   groupSearch: '',
 };
 
+const tabMeta = {
+  dashboard: { title: 'Главная', lead: 'Короткая сводка по системе, быстрые действия и проблемные места.' },
+  servers: { title: 'Серверы', lead: 'Inventory серверов, редактирование карточек и базовые параметры доступа.' },
+  groups: { title: 'Группы', lead: 'Группы и связи сервер ↔ группа для дальнейших проверок и действий.' },
+  checks: { title: 'Проверки', lead: 'Запуск и просмотр результатов проверок доступности и статусов.' },
+  alerts: { title: 'Оповещения', lead: 'Активные уведомления без смешивания с inventory и общей сводкой.' },
+  roadmap: { title: 'Дальше', lead: 'Ближайшие шаги развития проекта и operational-контур.' },
+};
+
+const endpoints = {
+  version: '/version',
+  summary: '/api/summary',
+  servers: '/api/servers',
+  groups: '/api/groups',
+  groupLinks: '/api/group-links',
+  statuses: '/api/status/servers',
+  alerts: '/api/alerts',
+  pingRun: '/api/probes/ping/run',
+};
+
+const $ = (id) => document.getElementById(id);
+const q = (sel) => document.querySelector(sel);
+const qa = (sel) => Array.from(document.querySelectorAll(sel));
+
 function safe(value) {
-  if (value === null || value === undefined || value === '') return '—';
+  if (value === null || value === undefined) return '—';
   return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
-function statusPill(value) {
-  if (value === true) return '<span class="pill pill-success">OK</span>';
-  if (value === false) return '<span class="pill pill-danger">FAIL</span>';
-  return '<span class="pill pill-warning">N/A</span>';
-}
-
-function formatTimestamp(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return safe(value);
-  return safe(date.toLocaleString('ru-RU'));
-}
-
-function byId(id) {
-  return document.getElementById(id);
+function setText(id, value) {
+  const node = $(id);
+  if (node) node.textContent = value ?? '—';
 }
 
 function showMessage(type, text) {
-  const stack = document.getElementById('messageStack');
-  const item = document.createElement('div');
-  item.className = `message ${type} show`;
-  item.textContent = text;
-  stack.prepend(item);
-  window.setTimeout(() => {
-    item.classList.remove('show');
-    item.remove();
-  }, 5000);
+  const stack = $('messageStack');
+  if (!stack) return;
+  const div = document.createElement('div');
+  div.className = `flash flash-${type}`;
+  div.textContent = text;
+  stack.prepend(div);
+  setTimeout(() => div.remove(), 5000);
 }
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
-  const data = await response.json().catch(() => ({}));
+  const contentType = response.headers.get('content-type') || '';
+  const payload = contentType.includes('application/json') ? await response.json() : await response.text();
   if (!response.ok) {
-    throw new Error(data.detail || data.message || `HTTP ${response.status}`);
+    const detail = typeof payload === 'object' && payload?.detail ? payload.detail : payload;
+    throw new Error(String(detail || `HTTP ${response.status}`));
   }
-  return data;
+  return payload;
 }
 
-function renderMeta(versionInfo) {
-  const versionEl = document.getElementById('version');
-  const timezoneEl = document.getElementById('timezoneValue');
-  const publicUrlEl = document.getElementById('publicUrlValue');
+function formatTs(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return safe(value);
+  return date.toLocaleString('ru-RU');
+}
 
-  if (versionEl) versionEl.textContent = versionInfo.version || '—';
-  if (timezoneEl) timezoneEl.textContent = versionInfo.timezone || '—';
-  if (publicUrlEl) publicUrlEl.textContent = versionInfo.public_base_url || '—';
+function statusHtml(flag) {
+  if (flag === true) return '<span class="status-dot ok">OK</span>';
+  if (flag === false) return '<span class="status-dot fail">FAIL</span>';
+  return '<span class="status-dot unknown">unknown</span>';
+}
 
-  if (versionInfo.display_name) {
-    document.title = versionInfo.display_name;
-    document.querySelectorAll('.brand-title').forEach((el) => { el.textContent = versionInfo.display_name; });
-  }
+function renderMeta(meta) {
+  if (!meta) return;
+  setText('versionValue', meta.version || '—');
+  setText('timezoneValue', meta.timezone || '—');
+  setText('publicUrlValue', meta.public_base_url || '—');
+  setText('brandName', meta.display_name || 'Система мониторинга');
+  setText('pageEyebrow', meta.display_name || 'Система мониторинга');
+  if (meta.display_name) document.title = meta.display_name;
 }
 
 function renderSummary(summary) {
-  const cards = [
+  const cards = $('summaryCards');
+  const quick = $('quickStats');
+  if (!cards || !quick || !summary) return;
+
+  const items = [
     ['Всего серверов', summary.servers_total, 'inventory'],
     ['Включено', summary.servers_enabled, 'enabled'],
     ['Групп', summary.groups_total, 'groups'],
-    ['Связей сервер-группа', summary.group_links_total, 'links'],
+    ['Связей', summary.group_links_total, 'links'],
     ['Ping OK', summary.ping_ok_total, 'healthy'],
     ['Ping FAIL', summary.ping_fail_total, 'issues'],
     ['Ping unknown', summary.ping_unknown_total, 'unchecked'],
     ['Активные alerts', summary.active_alerts_total, 'attention'],
   ];
 
-  document.getElementById('summaryCards').innerHTML = cards.map(([label, value, sub]) => `
-    <article class="summary-card">
-      <div class="label">${safe(label)}</div>
-      <div class="value">${safe(value)}</div>
-      <div class="subvalue">${safe(sub)}</div>
+  cards.innerHTML = items.map(([label, value, sub]) => `
+    <article class="stat-card">
+      <div class="stat-label">${safe(label)}</div>
+      <div class="stat-value">${safe(value)}</div>
+      <div class="stat-sub">${safe(sub)}</div>
     </article>
   `).join('');
 
-  document.getElementById('quickStats').innerHTML = `
-    <div class="info-chip"><div class="label">Включено серверов</div><strong>${safe(summary.servers_enabled)}</strong></div>
-    <div class="info-chip"><div class="label">Проблемы по ping</div><strong>${safe(summary.ping_fail_total)}</strong></div>
-    <div class="info-chip"><div class="label">Активные alerts</div><strong>${safe(summary.active_alerts_total)}</strong></div>
-    <div class="info-chip"><div class="label">Группы</div><strong>${safe(summary.groups_total)}</strong></div>
-  `;
-}
-
-function renderGroupOptions(groups, selectedId = '') {
-  const select = document.getElementById('attachGroupSelect');
-  if (!select) return;
-  const options = groups.map(group => `<option value="${group.id}" ${String(group.id) === String(selectedId) ? 'selected' : ''}>${safe(group.name)} (#${group.id})</option>`).join('');
-  select.innerHTML = options || '<option value="">Сначала создайте группу</option>';
-}
-
-function renderServerOptions(servers, selectedId = '') {
-  const select = document.getElementById('attachServerSelect');
-  if (!select) return;
-  const options = servers.map(server => `<option value="${server.id}" ${String(server.id) === String(selectedId) ? 'selected' : ''}>${safe(server.name)} (${safe(server.host)})</option>`).join('');
-  select.innerHTML = options || '<option value="">Сначала добавьте сервер</option>';
-}
-
-function serverMatchesSearch(item, query) {
-  if (!query) return true;
-  const haystack = [item.name, item.host, item.ssh_user, item.description, ...(item.groups || [])]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  return haystack.includes(query);
-}
-
-function groupMatchesSearch(item, query) {
-  if (!query) return true;
-  const haystack = [item.name, item.description].filter(Boolean).join(' ').toLowerCase();
-  return haystack.includes(query);
-}
-
-function renderGroupsList(groups) {
-  const container = document.getElementById('groupsList');
-  if (!container) return;
-  const filtered = groups.filter(group => groupMatchesSearch(group, state.groupSearch));
-  document.getElementById('groupsCountLabel').textContent = `${filtered.length} групп`;
-
-  if (!filtered.length) {
-    container.innerHTML = '<div class="group-item"><div class="muted">Группы не найдены. Можно создать новую или сбросить фильтр.</div></div>';
-    return;
-  }
-
-  container.innerHTML = filtered.map(group => `
-    <div class="group-item">
-      <div class="group-item-head">
-        <div>
-          <strong>${safe(group.name)}</strong>
-          <div class="muted">${safe(group.description)}</div>
-        </div>
-        <div class="group-actions-wrap">
-          <span class="pill pill-info">${safe(group.server_count)} server(s)</span>
-          <div class="inline-actions">
-            <button class="secondary small-btn" type="button" data-action="edit-group" data-id="${group.id}">Изменить</button>
-            <button class="secondary small-btn danger-ghost" type="button" data-action="delete-group" data-id="${group.id}" data-name="${safe(group.name)}">Удалить</button>
-          </div>
-        </div>
-      </div>
+  quick.innerHTML = [
+    ['Включено серверов', summary.servers_enabled],
+    ['Проблемы по ping', summary.ping_fail_total],
+    ['Активные alerts', summary.active_alerts_total],
+    ['Группы', summary.groups_total],
+  ].map(([label, value]) => `
+    <div class="micro-stat">
+      <div class="label">${safe(label)}</div>
+      <strong>${safe(value)}</strong>
     </div>
   `).join('');
 }
 
-function renderServerCard(item) {
-  const groupsHtml = (item.groups || []).length
-    ? item.groups.map(group => `<span class="pill pill-neutral">${safe(group)}</span>`).join(' ')
-    : '<span class="muted">Группы пока не назначены</span>';
-
-  const featureFlags = [
-    item.has_3xui ? '<span class="pill pill-info">3x-ui</span>' : '',
-    item.has_ssl_monitoring ? '<span class="pill pill-warning">SSL</span>' : '',
-    item.is_enabled ? '<span class="pill pill-success">enabled</span>' : '<span class="pill pill-warning">disabled</span>',
-  ].filter(Boolean).join(' ');
-
-  return `
-    <article class="server-card">
-      <div class="server-card-head">
-        <div>
-          <div class="server-title">${safe(item.name)}</div>
-          <div class="server-subtitle code-text">${safe(item.host)} · ${safe(item.ssh_user)}:${safe(item.ssh_port)}</div>
-        </div>
-        ${statusPill(item.ping_ok)}
-      </div>
-      <div class="server-groups">${groupsHtml}</div>
-      <div class="server-flags" style="margin-top:10px;">${featureFlags}</div>
-      <div class="server-footer">
-        <div>Latency: <strong>${safe(item.ping_latency_ms)}</strong></div>
-        <div>Alerts: <strong>${safe(item.active_alerts || 0)}</strong></div>
-        <div>Проверка: <strong>${formatTimestamp(item.last_check_at)}</strong></div>
-        <div class="error-text">${safe(item.last_error)}</div>
-      </div>
-      <div class="card-actions">
-        <button class="secondary small-btn" type="button" data-action="edit-server" data-id="${item.id}">Изменить</button>
-        <button class="secondary small-btn danger-ghost" type="button" data-action="delete-server" data-id="${item.id}" data-name="${safe(item.name)}">Удалить</button>
-      </div>
-    </article>
-  `;
+function serverMatches(server, query) {
+  if (!query) return true;
+  const text = [server.name, server.host, server.ssh_user, server.description, ...(server.groups || [])]
+    .filter(Boolean).join(' ').toLowerCase();
+  return text.includes(query);
 }
 
-function renderServerCards(targetId, items, emptyText) {
-  const container = document.getElementById(targetId);
-  if (!container) return;
-  const filtered = targetId === 'serversListCards'
-    ? items.filter(item => serverMatchesSearch(item, state.serverSearch))
-    : items;
-  if (targetId === 'serversListCards') {
-    document.getElementById('serversCountLabel').textContent = `${filtered.length} серверов`;
-  }
-  if (!filtered.length) {
-    container.innerHTML = `<article class="server-card"><div class="muted">${safe(emptyText)}</div></article>`;
-    return;
-  }
-  container.innerHTML = filtered.map(renderServerCard).join('');
+function groupMatches(group, query) {
+  if (!query) return true;
+  const text = [group.name, group.description].filter(Boolean).join(' ').toLowerCase();
+  return text.includes(query);
 }
 
-function renderStatuses(items) {
-  const body = document.getElementById('statusRows');
+function renderDashboardServers(items) {
+  const body = $('dashboardServerRows');
   if (!body) return;
-  const filtered = items.filter(item => serverMatchesSearch(item, state.serverSearch));
-  if (!filtered.length) {
-    body.innerHTML = '<tr><td colspan="10" class="empty-cell">Серверы не найдены. Добавьте их или измените фильтр.</td></tr>';
+  const rows = (items || []).slice(0, 6);
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="6" class="empty-cell">Серверы ещё не добавлены. После заполнения inventory здесь появится короткая сводка.</td></tr>';
     return;
   }
 
-  body.innerHTML = filtered.map(item => `
+  body.innerHTML = rows.map((item) => `
     <tr>
-      <td>${safe(item.id)}</td>
-      <td><strong>${safe(item.name)}</strong><br /><span class="muted">${item.is_enabled ? 'Включён' : 'Отключён'}</span></td>
+      <td><strong>${safe(item.name)}</strong></td>
       <td class="code-text">${safe(item.host)}</td>
-      <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
-      <td>${(item.groups || []).length ? item.groups.map(group => `<span class="pill pill-neutral">${safe(group)}</span>`).join(' ') : '<span class="muted">—</span>'}</td>
-      <td>${statusPill(item.ping_ok)}</td>
+      <td>${statusHtml(item.ping_ok)}</td>
       <td>${safe(item.ping_latency_ms)}</td>
-      <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
-      <td>${formatTimestamp(item.last_check_at)}</td>
-      <td class="error-text">${safe(item.last_error)}</td>
+      <td>${Number(item.active_alerts || 0)}</td>
+      <td>${formatTs(item.last_check_at)}</td>
     </tr>
   `).join('');
 }
 
 function renderAlerts(items) {
-  const body = document.getElementById('alertRows');
-  const preview = document.getElementById('alertsPreview');
-  if (!body || !preview) return;
+  const body = $('alertRows');
+  const preview = $('alertsPreview');
+  if (body) {
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="7" class="empty-cell">Активных alerts пока нет.</td></tr>';
+    } else {
+      body.innerHTML = items.map((item) => `
+        <tr>
+          <td>${safe(item.id)}</td>
+          <td><strong>${safe(item.server_name)}</strong><br><span class="code-text">${safe(item.server_host)}</span></td>
+          <td>${safe(item.alert_type)}</td>
+          <td>${item.severity === 'critical' ? '<span class="pill pill-danger">critical</span>' : '<span class="pill pill-warning">warning</span>'}</td>
+          <td>${safe(item.message)}</td>
+          <td>${formatTs(item.first_seen_at)}</td>
+          <td>${formatTs(item.last_seen_at)}</td>
+        </tr>
+      `).join('');
+    }
+  }
 
-  if (!items.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty-cell">Активных alerts пока нет.</td></tr>';
-    preview.innerHTML = '<div class="mini-alert-item"><div class="muted">Активных alerts нет.</div></div>';
+  if (preview) {
+    if (!items.length) {
+      preview.innerHTML = '<div class="alert-mini-item"><div class="alert-mini-text">Активных alerts нет.</div></div>';
+    } else {
+      preview.innerHTML = items.slice(0, 4).map((item) => `
+        <div class="alert-mini-item">
+          <div class="alert-mini-head">
+            <strong>${safe(item.server_name)}</strong>
+            ${item.severity === 'critical' ? '<span class="pill pill-danger">critical</span>' : '<span class="pill pill-warning">warning</span>'}
+          </div>
+          <div class="alert-mini-text">${safe(item.message)}</div>
+        </div>
+      `).join('');
+    }
+  }
+}
+
+function renderServersTable(servers, statuses) {
+  const body = $('serversListRows');
+  if (!body) return;
+  const statusMap = new Map((statuses || []).map((s) => [String(s.id), s]));
+  const filtered = (servers || []).filter((item) => serverMatches(item, state.serverSearch));
+  setText('serversCountLabel', `${filtered.length} серверов`);
+
+  if (!filtered.length) {
+    body.innerHTML = '<tr><td colspan="6" class="empty-cell">Серверы не найдены. Можно создать первый сервер или сбросить фильтр.</td></tr>';
     return;
   }
 
-  body.innerHTML = items.map(item => `
-    <tr>
-      <td>${safe(item.id)}</td>
-      <td><strong>${safe(item.server_name)}</strong><br /><span class="muted code-text">${safe(item.server_host)}</span></td>
-      <td>${safe(item.alert_type)}</td>
-      <td>${item.severity === 'critical' ? '<span class="pill pill-danger">critical</span>' : '<span class="pill pill-warning">warning</span>'}</td>
-      <td>${safe(item.message)}</td>
-      <td>${formatTimestamp(item.first_seen_at)}</td>
-      <td>${formatTimestamp(item.last_seen_at)}</td>
-    </tr>
-  `).join('');
+  body.innerHTML = filtered.map((item) => {
+    const st = statusMap.get(String(item.id)) || {};
+    const groups = (item.groups || []).length
+      ? `<div class="inline-pills">${item.groups.map((g) => `<span class="pill pill-neutral">${safe(g)}</span>`).join('')}</div>`
+      : '<span class="muted">—</span>';
+    return `
+      <tr>
+        <td>
+          <strong>${safe(item.name)}</strong><br>
+          <span class="code-text">${safe(item.host)}</span>
+        </td>
+        <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
+        <td>${groups}</td>
+        <td>${statusHtml(st.ping_ok)}</td>
+        <td>${formatTs(st.last_check_at)}</td>
+        <td>
+          <div class="row-actions">
+            <button class="btn btn-secondary" type="button" data-action="edit-server" data-id="${item.id}">Изменить</button>
+            <button class="btn btn-danger" type="button" data-action="delete-server" data-id="${item.id}" data-name="${safe(item.name)}">Удалить</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
 
-  preview.innerHTML = items.slice(0, 4).map(item => `
-    <div class="mini-alert-item">
-      <div class="mini-alert-head">
-        <strong>${safe(item.server_name)}</strong>
-        ${item.severity === 'critical' ? '<span class="pill pill-danger">critical</span>' : '<span class="pill pill-warning">warning</span>'}
-      </div>
-      <div class="muted">${safe(item.message)}</div>
-      <div class="muted" style="margin-top:6px;">${formatTimestamp(item.last_seen_at)}</div>
-    </div>
+function renderGroups(groups) {
+  const body = $('groupsListRows');
+  if (!body) return;
+  const filtered = (groups || []).filter((g) => groupMatches(g, state.groupSearch));
+  setText('groupsCountLabel', `${filtered.length} групп`);
+
+  if (!filtered.length) {
+    body.innerHTML = '<tr><td colspan="4" class="empty-cell">Группы не найдены. Создайте новую или сбросьте фильтр.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = filtered.map((group) => `
+    <tr>
+      <td><strong>${safe(group.name)}</strong></td>
+      <td>${safe(group.description)}</td>
+      <td>${safe(group.server_count)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="btn btn-secondary" type="button" data-action="edit-group" data-id="${group.id}">Изменить</button>
+          <button class="btn btn-danger" type="button" data-action="delete-group" data-id="${group.id}" data-name="${safe(group.name)}">Удалить</button>
+        </div>
+      </td>
+    </tr>
   `).join('');
 }
 
 function renderGroupLinks(links) {
-  const body = document.getElementById('groupLinkRows');
+  const body = $('groupLinkRows');
   if (!body) return;
   if (!links.length) {
-    body.innerHTML = '<tr><td colspan="5" class="empty-cell">Связей пока нет. После привязки серверов к группам таблица заполнится.</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="empty-cell">Связей пока нет.</td></tr>';
     return;
   }
-
-  body.innerHTML = links.map(link => `
+  body.innerHTML = links.map((link) => `
     <tr>
       <td><strong>${safe(link.group_name)}</strong></td>
       <td>${safe(link.server_name)}</td>
       <td class="code-text">${safe(link.server_host)}</td>
-      <td>${formatTimestamp(link.created_at)}</td>
-      <td><button class="secondary small-btn danger-ghost" type="button" data-action="detach-link" data-group-id="${link.group_id}" data-server-id="${link.server_id}">Убрать</button></td>
+      <td>${formatTs(link.created_at)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="btn btn-danger" type="button" data-action="detach-link" data-group-id="${link.group_id}" data-server-id="${link.server_id}">Убрать</button>
+        </div>
+      </td>
     </tr>
   `).join('');
 }
 
+function renderStatuses(items) {
+  const body = $('statusRows');
+  if (!body) return;
+  const filtered = (items || []).filter((item) => serverMatches(item, state.serverSearch));
+  if (!filtered.length) {
+    body.innerHTML = '<tr><td colspan="10" class="empty-cell">Серверы не найдены. Добавьте их в inventory.</td></tr>';
+    return;
+  }
+  body.innerHTML = filtered.map((item) => `
+    <tr>
+      <td>${safe(item.id)}</td>
+      <td><strong>${safe(item.name)}</strong></td>
+      <td class="code-text">${safe(item.host)}</td>
+      <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
+      <td>${(item.groups || []).length ? `<div class="inline-pills">${item.groups.map((g) => `<span class="pill pill-neutral">${safe(g)}</span>`).join('')}</div>` : '<span class="muted">—</span>'}</td>
+      <td>${statusHtml(item.ping_ok)}</td>
+      <td>${safe(item.ping_latency_ms)}</td>
+      <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
+      <td>${formatTs(item.last_check_at)}</td>
+      <td>${safe(item.last_error)}</td>
+    </tr>
+  `).join('');
+}
+
+function populateSelect(id, items, emptyText, labelFn) {
+  const select = $(id);
+  if (!select) return;
+  if (!items.length) {
+    select.innerHTML = `<option value="">${emptyText}</option>`;
+    return;
+  }
+  select.innerHTML = items.map((item) => `<option value="${item.id}">${labelFn(item)}</option>`).join('');
+}
+
+function refreshUi() {
+  renderMeta(state.version);
+  renderSummary(state.summary);
+  renderDashboardServers(state.statuses || []);
+  renderAlerts(state.alerts || []);
+  renderServersTable(state.servers || [], state.statuses || []);
+  renderGroups(state.groups || []);
+  renderGroupLinks(state.groupLinks || []);
+  renderStatuses(state.statuses || []);
+  populateSelect('attachGroupSelect', state.groups || [], 'Сначала создайте группу', (g) => `${g.name} (#${g.id})`);
+  populateSelect('attachServerSelect', state.servers || [], 'Сначала добавьте сервер', (s) => `${s.name} (${s.host})`);
+}
+
+async function loadAll() {
+  const [version, summary, servers, groups, statuses, alerts, groupLinks] = await Promise.all([
+    fetchJson(endpoints.version),
+    fetchJson(endpoints.summary),
+    fetchJson(endpoints.servers),
+    fetchJson(endpoints.groups),
+    fetchJson(endpoints.statuses),
+    fetchJson(endpoints.alerts),
+    fetchJson(endpoints.groupLinks),
+  ]);
+  state.version = version;
+  state.summary = summary;
+  state.servers = servers;
+  state.groups = groups;
+  state.statuses = statuses;
+  state.alerts = alerts;
+  state.groupLinks = groupLinks;
+  refreshUi();
+}
+
+function setTab(tab) {
+  const meta = tabMeta[tab] || tabMeta.dashboard;
+  setText('pageTitle', meta.title);
+  setText('pageLead', meta.lead);
+  qa('.nav-link').forEach((node) => node.classList.toggle('active', node.dataset.tab === tab));
+  qa('.view').forEach((node) => node.classList.toggle('active', node.dataset.view === tab));
+  window.location.hash = tab;
+}
+
 function fillServerForm(server) {
-  const form = document.getElementById('serverForm');
-  form.server_id.value = server.id;
+  const form = $('serverForm');
+  if (!form) return;
+  form.server_id.value = server.id || '';
   form.name.value = server.name || '';
   form.host.value = server.host || '';
   form.ssh_port.value = server.ssh_port || 22;
   form.ssh_user.value = server.ssh_user || 'srvops';
   form.description.value = server.description || '';
-  form.is_enabled.checked = Boolean(server.is_enabled);
-  form.has_3xui.checked = Boolean(server.has_3xui);
-  form.has_ssl_monitoring.checked = Boolean(server.has_ssl_monitoring);
-
-  document.getElementById('serverFormTitle').textContent = `Редактирование сервера #${server.id}`;
-  document.getElementById('serverSubmitBtn').textContent = 'Сохранить сервер';
-  document.getElementById('serverCancelBtn').classList.remove('hidden');
-  setActiveTab('servers');
-  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  form.is_enabled.checked = !!server.is_enabled;
+  form.has_3xui.checked = !!server.has_3xui;
+  form.has_ssl_monitoring.checked = !!server.has_ssl_monitoring;
+  setText('serverFormTitle', `Редактирование сервера #${server.id}`);
+  setText('serverSubmitBtn', 'Сохранить сервер');
+  $('serverCancelBtn')?.classList.remove('hidden');
+  setTab('servers');
 }
 
 function resetServerForm() {
-  const form = document.getElementById('serverForm');
+  const form = $('serverForm');
+  if (!form) return;
   form.reset();
   form.server_id.value = '';
-  form.ssh_port.value = '22';
+  form.ssh_port.value = 22;
   form.ssh_user.value = 'srvops';
   form.is_enabled.checked = true;
-  document.getElementById('serverFormTitle').textContent = 'Новый сервер';
-  document.getElementById('serverSubmitBtn').textContent = 'Добавить сервер';
-  document.getElementById('serverCancelBtn').classList.add('hidden');
+  setText('serverFormTitle', 'Новый сервер');
+  setText('serverSubmitBtn', 'Добавить сервер');
+  $('serverCancelBtn')?.classList.add('hidden');
 }
 
 function fillGroupForm(group) {
-  const form = document.getElementById('groupForm');
-  form.group_id.value = group.id;
+  const form = $('groupForm');
+  if (!form) return;
+  form.group_id.value = group.id || '';
   form.name.value = group.name || '';
   form.description.value = group.description || '';
-  document.getElementById('groupFormTitle').textContent = `Редактирование группы #${group.id}`;
-  document.getElementById('groupSubmitBtn').textContent = 'Сохранить группу';
-  document.getElementById('groupCancelBtn').classList.remove('hidden');
-  setActiveTab('groups');
-  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  setText('groupFormTitle', `Редактирование группы #${group.id}`);
+  setText('groupSubmitBtn', 'Сохранить группу');
+  $('groupCancelBtn')?.classList.remove('hidden');
+  setTab('groups');
 }
 
 function resetGroupForm() {
-  const form = document.getElementById('groupForm');
+  const form = $('groupForm');
+  if (!form) return;
   form.reset();
   form.group_id.value = '';
-  document.getElementById('groupFormTitle').textContent = 'Новая группа';
-  document.getElementById('groupSubmitBtn').textContent = 'Создать группу';
-  document.getElementById('groupCancelBtn').classList.add('hidden');
-}
-
-function setActiveTab(tab) {
-  const meta = tabMeta[tab] || tabMeta.dashboard;
-  document.getElementById('pageTitle').textContent = meta.title;
-  document.getElementById('pageLead').textContent = meta.lead;
-
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.tab === tab);
-  });
-  document.querySelectorAll('.tab-view').forEach(view => {
-    view.classList.toggle('active', view.dataset.view === tab);
-  });
-  window.location.hash = tab;
-}
-
-function refreshUi() {
-  renderMeta(state.version || {});
-  renderSummary(state.summary || {
-    servers_total: 0, servers_enabled: 0, groups_total: 0, group_links_total: 0,
-    ping_ok_total: 0, ping_fail_total: 0, ping_unknown_total: 0, active_alerts_total: 0,
-  });
-  renderStatuses(state.statuses || []);
-  renderAlerts(state.alerts || []);
-  renderGroupsList(state.groups || []);
-  renderGroupOptions(state.groups || []);
-  renderServerOptions(state.servers || []);
-  renderGroupLinks(state.groupLinks || []);
-  renderServerCards('dashboardServerCards', (state.statuses || []).slice(0, 6), 'Серверы ещё не добавлены. Пока это спокойная, но слишком пустая панель.');
-  renderServerCards('serversListCards', state.servers || [], 'Список серверов пока пуст. Здесь же можно сразу создать первый сервер.');
-}
-
-async function loadDashboard() {
-  const [version, summary, statuses, alerts, groups, servers, groupLinks] = await Promise.all([
-    fetchJson(endpoints.version),
-    fetchJson(endpoints.summary),
-    fetchJson(endpoints.statuses),
-    fetchJson(endpoints.alerts),
-    fetchJson(endpoints.groups),
-    fetchJson(endpoints.servers),
-    fetchJson(endpoints.groupLinks),
-  ]);
-
-  state.version = version;
-  state.summary = summary;
-  state.statuses = statuses;
-  state.alerts = alerts;
-  state.groups = groups;
-  state.servers = servers;
-  state.groupLinks = groupLinks;
-  refreshUi();
-}
-
-async function runPingProbe() {
-  const buttons = ['pingBtn', 'pingBtnMain', 'pingBtnChecks']
-    .map(id => document.getElementById(id))
-    .filter(Boolean);
-  buttons.forEach(button => { button.disabled = true; });
-  try {
-    const result = await fetchJson(endpoints.pingRun, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timeout_seconds: 2 }),
-    });
-    showMessage('success', `Ping probe завершён: processed=${result.processed}, ok=${result.ok}, failed=${result.failed}`);
-    await loadDashboard();
-    setActiveTab('checks');
-  } catch (error) {
-    showMessage('error', `Не удалось запустить ping probe: ${error.message}`);
-  } finally {
-    buttons.forEach(button => { button.disabled = false; });
-  }
-}
-
-async function handleGroupSubmit(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const groupId = form.group_id.value;
-  const payload = {
-    name: form.name.value.trim(),
-    description: form.description.value.trim() || null,
-  };
-
-  try {
-    const result = await fetchJson(groupId ? `${endpoints.groups}/${groupId}` : endpoints.groups, {
-      method: groupId ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    showMessage('success', groupId ? `Группа «${result.name}» обновлена.` : `Группа «${result.name}» создана.`);
-    resetGroupForm();
-    await loadDashboard();
-    setActiveTab('groups');
-  } catch (error) {
-    showMessage('error', `Не удалось сохранить группу: ${error.message}`);
-  }
+  setText('groupFormTitle', 'Новая группа');
+  setText('groupSubmitBtn', 'Создать группу');
+  $('groupCancelBtn')?.classList.add('hidden');
 }
 
 async function handleServerSubmit(event) {
@@ -471,153 +431,149 @@ async function handleServerSubmit(event) {
     has_3xui: form.has_3xui.checked,
     has_ssl_monitoring: form.has_ssl_monitoring.checked,
   };
-
   try {
-    const result = await fetchJson(serverId ? `${endpoints.servers}/${serverId}` : endpoints.servers, {
-      method: serverId ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const url = serverId ? `${endpoints.servers}/${serverId}` : endpoints.servers;
+    const method = serverId ? 'PUT' : 'POST';
+    const result = await fetchJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     showMessage('success', serverId ? `Сервер «${result.name}» обновлён.` : `Сервер «${result.name}» добавлен.`);
     resetServerForm();
-    await loadDashboard();
-    setActiveTab('servers');
+    await loadAll();
+    setTab('servers');
   } catch (error) {
     showMessage('error', `Не удалось сохранить сервер: ${error.message}`);
   }
 }
 
-async function handleAttachSubmit(event) {
+async function handleGroupSubmit(event) {
   event.preventDefault();
-  const groupId = document.getElementById('attachGroupSelect').value;
-  const serverId = document.getElementById('attachServerSelect').value;
-  if (!groupId || !serverId) {
-    showMessage('error', 'Для привязки выберите и сервер, и группу.');
-    return;
-  }
-
+  const form = event.currentTarget;
+  const groupId = form.group_id.value;
+  const payload = { name: form.name.value.trim(), description: form.description.value.trim() || null };
   try {
-    await fetchJson(`/api/groups/${groupId}/servers/${serverId}`, { method: 'POST' });
-    showMessage('success', 'Сервер успешно привязан к группе.');
-    await loadDashboard();
-    setActiveTab('groups');
+    const url = groupId ? `${endpoints.groups}/${groupId}` : endpoints.groups;
+    const method = groupId ? 'PUT' : 'POST';
+    const result = await fetchJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    showMessage('success', groupId ? `Группа «${result.name}» обновлена.` : `Группа «${result.name}» создана.`);
+    resetGroupForm();
+    await loadAll();
+    setTab('groups');
   } catch (error) {
-    showMessage('error', `Не удалось привязать сервер к группе: ${error.message}`);
+    showMessage('error', `Не удалось сохранить группу: ${error.message}`);
   }
 }
 
-async function handleCardActions(event) {
-  const button = event.target.closest('button[data-action]');
-  if (!button) return;
-  const action = button.dataset.action;
+async function handleAttachSubmit(event) {
+  event.preventDefault();
+  const groupId = $('attachGroupSelect')?.value;
+  const serverId = $('attachServerSelect')?.value;
+  if (!groupId || !serverId) {
+    showMessage('error', 'Для привязки выберите группу и сервер.');
+    return;
+  }
+  try {
+    await fetchJson(`/api/groups/${groupId}/servers/${serverId}`, { method: 'POST' });
+    showMessage('success', 'Связь сервер ↔ группа создана.');
+    await loadAll();
+  } catch (error) {
+    showMessage('error', `Не удалось создать связь: ${error.message}`);
+  }
+}
 
+async function runPingProbe() {
+  const buttons = ['pingBtn', 'pingBtnChecks'].map($).filter(Boolean);
+  buttons.forEach((btn) => { btn.disabled = true; });
+  try {
+    const result = await fetchJson(endpoints.pingRun, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timeout_seconds: 2 }),
+    });
+    showMessage('success', `Ping probe завершён: processed=${result.processed}, ok=${result.ok}, failed=${result.failed}`);
+    await loadAll();
+    setTab('checks');
+  } catch (error) {
+    showMessage('error', `Не удалось запустить ping probe: ${error.message}`);
+  } finally {
+    buttons.forEach((btn) => { btn.disabled = false; });
+  }
+}
+
+async function handleActionClick(event) {
+  const btn = event.target.closest('button[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
   if (action === 'edit-server') {
-    const server = state.servers.find(item => String(item.id) === String(button.dataset.id));
+    const server = state.servers.find((item) => String(item.id) === String(btn.dataset.id));
     if (server) fillServerForm(server);
     return;
   }
-
   if (action === 'delete-server') {
-    const serverId = button.dataset.id;
-    const serverName = button.dataset.name || `#${serverId}`;
-    if (!window.confirm(`Удалить сервер «${serverName}»?`)) return;
+    const name = btn.dataset.name || 'сервер';
+    if (!window.confirm(`Удалить сервер «${name}»?`)) return;
     try {
-      await fetchJson(`${endpoints.servers}/${serverId}`, { method: 'DELETE' });
-      showMessage('success', `Сервер «${serverName}» удалён.`);
+      await fetchJson(`${endpoints.servers}/${btn.dataset.id}`, { method: 'DELETE' });
+      showMessage('success', `Сервер «${name}» удалён.`);
       resetServerForm();
-      await loadDashboard();
+      await loadAll();
     } catch (error) {
       showMessage('error', `Не удалось удалить сервер: ${error.message}`);
     }
     return;
   }
-
   if (action === 'edit-group') {
-    const group = state.groups.find(item => String(item.id) === String(button.dataset.id));
+    const group = state.groups.find((item) => String(item.id) === String(btn.dataset.id));
     if (group) fillGroupForm(group);
     return;
   }
-
   if (action === 'delete-group') {
-    const groupId = button.dataset.id;
-    const groupName = button.dataset.name || `#${groupId}`;
-    if (!window.confirm(`Удалить группу «${groupName}»? Связи с серверами тоже будут удалены.`)) return;
+    const name = btn.dataset.name || 'группа';
+    if (!window.confirm(`Удалить группу «${name}»?`)) return;
     try {
-      await fetchJson(`${endpoints.groups}/${groupId}`, { method: 'DELETE' });
-      showMessage('success', `Группа «${groupName}» удалена.`);
+      await fetchJson(`${endpoints.groups}/${btn.dataset.id}`, { method: 'DELETE' });
+      showMessage('success', `Группа «${name}» удалена.`);
       resetGroupForm();
-      await loadDashboard();
+      await loadAll();
     } catch (error) {
       showMessage('error', `Не удалось удалить группу: ${error.message}`);
     }
     return;
   }
-
   if (action === 'detach-link') {
-    const groupId = button.dataset.groupId;
-    const serverId = button.dataset.serverId;
-    if (!window.confirm('Удалить эту связь сервер ↔ группа?')) return;
+    if (!window.confirm('Удалить связь сервер ↔ группа?')) return;
     try {
-      await fetchJson(`/api/groups/${groupId}/servers/${serverId}`, { method: 'DELETE' });
+      await fetchJson(`/api/groups/${btn.dataset.groupId}/servers/${btn.dataset.serverId}`, { method: 'DELETE' });
       showMessage('success', 'Связь сервер ↔ группа удалена.');
-      await loadDashboard();
+      await loadAll();
     } catch (error) {
       showMessage('error', `Не удалось удалить связь: ${error.message}`);
     }
   }
 }
 
-function wireEvents() {
-  document.querySelectorAll('.nav-item').forEach(button => {
-    button.addEventListener('click', () => setActiveTab(button.dataset.tab));
-  });
-
-  ['refreshBtn', 'refreshBtnMain'].forEach(id => {
-    const element = byId(id);
-    if (element) element.addEventListener('click', () => loadDashboard().catch(err => showMessage('error', err.message)));
-  });
-
-  ['pingBtn', 'pingBtnMain', 'pingBtnChecks'].forEach(id => {
-    const element = byId(id);
-    if (element) element.addEventListener('click', runPingProbe);
-  });
-
-  const groupForm = byId('groupForm');
-  if (groupForm) groupForm.addEventListener('submit', handleGroupSubmit);
-  const serverForm = byId('serverForm');
-  if (serverForm) serverForm.addEventListener('submit', handleServerSubmit);
-  const attachForm = byId('attachForm');
-  if (attachForm) attachForm.addEventListener('submit', handleAttachSubmit);
-  const groupCancelBtn = byId('groupCancelBtn');
-  if (groupCancelBtn) groupCancelBtn.addEventListener('click', resetGroupForm);
-  const serverCancelBtn = byId('serverCancelBtn');
-  if (serverCancelBtn) serverCancelBtn.addEventListener('click', resetServerForm);
-
-  const serverSearchInput = byId('serverSearchInput');
-  if (serverSearchInput) {
-    serverSearchInput.addEventListener('input', event => {
-      state.serverSearch = event.target.value.trim().toLowerCase();
-      renderServerCards('serversListCards', state.servers || [], 'Список серверов пока пуст. Здесь же можно сразу создать первый сервер.');
-      renderStatuses(state.statuses || []);
-    });
-  }
-
-  const groupSearchInput = byId('groupSearchInput');
-  if (groupSearchInput) {
-    groupSearchInput.addEventListener('input', event => {
-      state.groupSearch = event.target.value.trim().toLowerCase();
-      renderGroupsList(state.groups || []);
-    });
-  }
-
-  document.body.addEventListener('click', handleCardActions);
-
-  window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.replace('#', '') || 'dashboard';
-    setActiveTab(hash in tabMeta ? hash : 'dashboard');
-  });
+function wire() {
+  qa('.nav-link').forEach((node) => node.addEventListener('click', () => setTab(node.dataset.tab)));
+  $('refreshBtn')?.addEventListener('click', () => loadAll().catch((e) => showMessage('error', e.message)));
+  $('pingBtn')?.addEventListener('click', runPingProbe);
+  $('pingBtnChecks')?.addEventListener('click', runPingProbe);
+  $('serverForm')?.addEventListener('submit', handleServerSubmit);
+  $('groupForm')?.addEventListener('submit', handleGroupSubmit);
+  $('attachForm')?.addEventListener('submit', handleAttachSubmit);
+  $('serverCancelBtn')?.addEventListener('click', resetServerForm);
+  $('groupCancelBtn')?.addEventListener('click', resetGroupForm);
+  $('serverSearchInput')?.addEventListener('input', (e) => { state.serverSearch = e.target.value.trim().toLowerCase(); refreshUi(); });
+  $('groupSearchInput')?.addEventListener('input', (e) => { state.groupSearch = e.target.value.trim().toLowerCase(); refreshUi(); });
+  document.body.addEventListener('click', handleActionClick);
 }
 
-wireEvents();
-setActiveTab((window.location.hash || '#dashboard').replace('#', ''));
-loadDashboard().catch(error => showMessage('error', `Не удалось загрузить dashboard: ${error.message}`));
+async function init() {
+  wire();
+  const hash = (window.location.hash || '#dashboard').replace('#', '');
+  setTab(tabMeta[hash] ? hash : 'dashboard');
+  try {
+    await loadAll();
+  } catch (error) {
+    showMessage('error', `Не удалось загрузить данные панели: ${error.message}`);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);
