@@ -9,7 +9,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-orchestrator}
       POSTGRES_USER: ${POSTGRES_USER:-orchestrator}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME}
-      TZ: ${APP_TZ:-UTC}
+      TZ: ${APP_TZ:-Europe/Moscow}
     volumes:
       - server_orchestration_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -22,8 +22,8 @@ services:
     build:
       context: ../app/backend
       args:
-        APP_VERSION: 0.1.2
-    image: server-orchestration-backend-local:0.1.2
+        APP_VERSION: 0.1.3
+    image: server-orchestration-backend-local:0.1.3
     container_name: server-orchestration-backend
     restart: unless-stopped
     env_file:
@@ -33,7 +33,7 @@ services:
         condition: service_healthy
     environment:
       APP_NAME: ${APP_NAME:-server-orchestration}
-      APP_TZ: ${APP_TZ:-UTC}
+      APP_TZ: ${APP_TZ:-Europe/Moscow}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB:-orchestrator}

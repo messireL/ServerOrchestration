@@ -23,3 +23,7 @@
 - в каждом релизе ведутся изменения и баги в `docs/releases/<версия>/`
 - версия хранится в файле `VERSION`
 - для Portainer не требуется вручную задавать `APP_VERSION`
+
+- По умолчанию проект использует timezone `Europe/Moscow`.
+- Для Portainer stack переменная `BACKEND_IMAGE` больше не требуется.
+- Если image в GHCR private, нужен отдельный доступ к registry или package должен быть public.

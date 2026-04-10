@@ -18,8 +18,8 @@ from src.db import (
 )
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.2")
-APP_TZ = os.getenv("APP_TZ", "UTC")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.3")
+APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
