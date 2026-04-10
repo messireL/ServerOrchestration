@@ -83,6 +83,29 @@ function statusHtml(flag) {
   return '<span class="status-dot unknown">unknown</span>';
 }
 
+
+function applyTheme(theme) {
+  const normalized = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = normalized;
+  try { localStorage.setItem('sm-theme', normalized); } catch (e) {}
+  const button = $('themeToggleBtn');
+  if (button) {
+    button.textContent = normalized === 'dark' ? 'Светлая тема' : 'Тёмная тема';
+    button.dataset.theme = normalized;
+  }
+}
+
+function initThemeToggle() {
+  const button = $('themeToggleBtn');
+  const current = document.documentElement.dataset.theme || 'light';
+  applyTheme(current);
+  if (!button) return;
+  button.addEventListener('click', () => {
+    const next = (document.documentElement.dataset.theme || 'light') === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+  });
+}
+
 function renderMeta(meta) {
   if (!meta) return;
   setText('versionValue', meta.version || '—');
@@ -551,6 +574,7 @@ async function handleActionClick(event) {
 }
 
 function wire() {
+  initThemeToggle();
   qa('.nav-link').forEach((node) => node.addEventListener('click', () => setTab(node.dataset.tab)));
   $('refreshBtn')?.addEventListener('click', () => loadAll().catch((e) => showMessage('error', e.message)));
   $('pingBtn')?.addEventListener('click', runPingProbe);

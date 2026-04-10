@@ -6,6 +6,14 @@
   <title>Система мониторинга</title>
   <link rel="icon" type="image/x-icon" href="/static/assets/favicon.ico" />
   <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/favicon.png" />
+  <script>
+    try {
+      const savedTheme = localStorage.getItem("sm-theme");
+      const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const theme = savedTheme || (prefersDark ? "dark" : "light");
+      document.documentElement.dataset.theme = theme;
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -62,6 +70,7 @@
           <p class="workspace-lead" id="pageLead">Короткая сводка по системе, быстрые действия и проблемные места.</p>
         </div>
         <div class="header-actions">
+          <button class="btn btn-ghost" type="button" id="themeToggleBtn" aria-label="Переключить тему">Тёмная тема</button>
           <button class="btn btn-secondary" id="refreshBtn">Обновить данные</button>
           <button class="btn btn-primary" id="pingBtn">Запустить ping probe</button>
         </div>
