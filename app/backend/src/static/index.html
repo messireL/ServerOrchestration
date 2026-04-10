@@ -13,33 +13,33 @@
         <div class="brand-mark">SO</div>
         <div>
           <div class="brand-title">ServerOrchestration</div>
-          <div class="brand-subtitle">Управление серверами без лишней драмы</div>
+          <div class="brand-subtitle">Единая панель контроля и управления серверами</div>
         </div>
       </div>
 
       <nav class="nav-menu" id="navMenu">
         <button class="nav-item active" data-tab="dashboard">
-          <span class="nav-icon">▣</span>
+          <span class="nav-icon">Г</span>
           <span>Главная</span>
         </button>
         <button class="nav-item" data-tab="servers">
-          <span class="nav-icon">🖥</span>
+          <span class="nav-icon">С</span>
           <span>Серверы</span>
         </button>
         <button class="nav-item" data-tab="groups">
-          <span class="nav-icon">◫</span>
+          <span class="nav-icon">Гр</span>
           <span>Группы</span>
         </button>
         <button class="nav-item" data-tab="checks">
-          <span class="nav-icon">⌁</span>
+          <span class="nav-icon">П</span>
           <span>Проверки</span>
         </button>
         <button class="nav-item" data-tab="alerts">
-          <span class="nav-icon">⚠</span>
+          <span class="nav-icon">О</span>
           <span>Оповещения</span>
         </button>
         <button class="nav-item" data-tab="roadmap">
-          <span class="nav-icon">↗</span>
+          <span class="nav-icon">R</span>
           <span>Дальше</span>
         </button>
       </nav>
@@ -61,7 +61,7 @@
         <div>
           <div class="eyebrow">Server orchestration</div>
           <h1 id="pageTitle">Главная</h1>
-          <p id="pageLead" class="muted lead">Сводка по инфраструктуре, status-карточки и быстрые действия.</p>
+          <p id="pageLead" class="muted lead">Сводка по инфраструктуре, актуальные статусы и быстрые действия.</p>
         </div>
         <div class="topbar-badges">
           <span class="pill pill-info">GitHub → Portainer</span>
@@ -79,7 +79,7 @@
             <div class="panel-head">
               <div>
                 <h2>Быстрые действия</h2>
-                <p class="muted">Тут только нужное: обновить данные, прогнать probe и глянуть на проблемные зоны.</p>
+                <p class="muted">Быстрое обновление данных, запуск проверок и контроль ключевых показателей.</p>
               </div>
             </div>
             <div class="action-row">
@@ -117,7 +117,7 @@
             <div class="panel-head">
               <div>
                 <h2>Новый сервер</h2>
-                <p class="muted">Добавляем серверы уже через UI. По умолчанию используем service-user, а не root.</p>
+                <p class="muted">Управление inventory через веб-интерфейс. По умолчанию используется сервисный пользователь.</p>
               </div>
             </div>
             <form class="stack-form" id="serverForm">
@@ -156,7 +156,7 @@
             <div class="panel-head">
               <div>
                 <h2>Список серверов</h2>
-                <p class="muted">Здесь уже видно, кто жив, где группы, и где скоро начнётся весёлое администрирование.</p>
+                <p class="muted">Карточки серверов показывают текущий статус, группы и базовые признаки доступности.</p>
               </div>
             </div>
             <div class="server-card-grid" id="serversListCards"></div>
@@ -190,7 +190,7 @@
             <div class="panel-head">
               <div>
                 <h2>Привязка серверов</h2>
-                <p class="muted">Собираем inventory без магии: сервер → группа, дальше уже можно делать нормальные сценарии.</p>
+                <p class="muted">Группы помогают разделять серверы по ролям, контурам и будущим сценариям обслуживания.</p>
               </div>
             </div>
             <form class="stack-form" id="attachForm">
@@ -215,7 +215,7 @@
             <div class="panel-head">
               <div>
                 <h2>Доступные проверки</h2>
-                <p class="muted">Сейчас рабочий контур — ping. Остальные разделы уже выделены под следующий функционал.</p>
+                <p class="muted">Сейчас доступен ping probe. Раздел подготовлен под последующее расширение проверок.</p>
               </div>
             </div>
             <div class="check-card-grid">
@@ -308,7 +308,7 @@
             <div class="panel-head">
               <div>
                 <h2>Ближайшие модули</h2>
-                <p class="muted">После UI-перестройки уже можно спокойно расширять функционал, не запихивая всё в одну страницу.</p>
+                <p class="muted">Раздел содержит ближайший roadmap и зафиксированные архитектурные решения проекта.</p>
               </div>
             </div>
             <div class="roadmap-list">

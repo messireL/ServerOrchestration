@@ -15,7 +15,7 @@ const tabMeta = {
   },
   servers: {
     title: 'Серверы',
-    lead: 'Добавление и просмотр серверов, чтобы inventory жил не в терминале и молитвах.',
+    lead: 'Добавление, просмотр и последующее сопровождение серверов в inventory.',
   },
   groups: {
     title: 'Группы',
@@ -31,7 +31,7 @@ const tabMeta = {
   },
   roadmap: {
     title: 'Дальше',
-    lead: 'Куда растёт проект после UI-перестройки и почему это уже нормальная панель, а не простыня.',
+    lead: 'Roadmap ближайших доработок и основные архитектурные ориентиры проекта.',
   },
 };
 
@@ -141,7 +141,7 @@ function renderGroupsList(groups) {
   const container = document.getElementById('groupsList');
   if (!container) return;
   if (!groups.length) {
-    container.innerHTML = '<div class="group-item"><div class="muted">Групп пока нет. Начни с test или prod — без философии, просто чтобы было на что опираться.</div></div>';
+    container.innerHTML = '<div class="group-item"><div class="muted">Группы пока не созданы. Начните с базовых контуров, например test или prod.</div></div>';
     return;
   }
 
@@ -202,7 +202,7 @@ function renderStatuses(items) {
   const body = document.getElementById('statusRows');
   if (!body) return;
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="10" class="empty-cell">Серверы ещё не добавлены. После этого панель станет куда полезнее и менее теоретической.</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" class="empty-cell">Серверы ещё не добавлены. После заполнения inventory здесь появятся актуальные статусы.</td></tr>';
     return;
   }
 
@@ -228,7 +228,7 @@ function renderAlerts(items) {
   if (!body || !preview) return;
 
   if (!items.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty-cell">Активных alerts пока нет. И вот тут хочется просто тихо порадоваться.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="empty-cell">Активных alerts пока нет.</td></tr>';
     preview.innerHTML = '<div class="mini-alert-item"><div class="muted">Активных alerts нет.</div></div>';
     return;
   }
@@ -375,7 +375,7 @@ async function handleAttachSubmit(event) {
   const groupId = document.getElementById('attachGroupSelect').value;
   const serverId = document.getElementById('attachServerSelect').value;
   if (!groupId || !serverId) {
-    showMessage('error', 'Для привязки нужны и сервер, и группа. Без этого получится только философская привязка к пустоте.');
+    showMessage('error', 'Для привязки выберите и сервер, и группу.');
     return;
   }
 
