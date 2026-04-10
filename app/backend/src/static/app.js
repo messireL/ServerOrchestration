@@ -51,6 +51,10 @@ function formatTimestamp(value) {
   return safe(date.toLocaleString('ru-RU'));
 }
 
+function byId(id) {
+  return document.getElementById(id);
+}
+
 function showMessage(type, text) {
   const stack = document.getElementById('messageStack');
   const item = document.createElement('div');
@@ -73,9 +77,18 @@ async function fetchJson(url, options = {}) {
 }
 
 function renderMeta(versionInfo) {
-  document.getElementById('version').textContent = versionInfo.version || '—';
-  document.getElementById('timezoneValue').textContent = versionInfo.timezone || '—';
-  document.getElementById('publicUrlValue').textContent = versionInfo.public_base_url || '—';
+  const versionEl = document.getElementById('version');
+  const timezoneEl = document.getElementById('timezoneValue');
+  const publicUrlEl = document.getElementById('publicUrlValue');
+
+  if (versionEl) versionEl.textContent = versionInfo.version || '—';
+  if (timezoneEl) timezoneEl.textContent = versionInfo.timezone || '—';
+  if (publicUrlEl) publicUrlEl.textContent = versionInfo.public_base_url || '—';
+
+  if (versionInfo.display_name) {
+    document.title = versionInfo.display_name;
+    document.querySelectorAll('.brand-title').forEach((el) => { el.textContent = versionInfo.display_name; });
+  }
 }
 
 function renderSummary(summary) {
@@ -560,31 +573,42 @@ function wireEvents() {
   });
 
   ['refreshBtn', 'refreshBtnMain'].forEach(id => {
-    const element = document.getElementById(id);
+    const element = byId(id);
     if (element) element.addEventListener('click', () => loadDashboard().catch(err => showMessage('error', err.message)));
   });
 
   ['pingBtn', 'pingBtnMain', 'pingBtnChecks'].forEach(id => {
-    const element = document.getElementById(id);
+    const element = byId(id);
     if (element) element.addEventListener('click', runPingProbe);
   });
 
-  document.getElementById('groupForm').addEventListener('submit', handleGroupSubmit);
-  document.getElementById('serverForm').addEventListener('submit', handleServerSubmit);
-  document.getElementById('attachForm').addEventListener('submit', handleAttachSubmit);
-  document.getElementById('groupCancelBtn').addEventListener('click', resetGroupForm);
-  document.getElementById('serverCancelBtn').addEventListener('click', resetServerForm);
+  const groupForm = byId('groupForm');
+  if (groupForm) groupForm.addEventListener('submit', handleGroupSubmit);
+  const serverForm = byId('serverForm');
+  if (serverForm) serverForm.addEventListener('submit', handleServerSubmit);
+  const attachForm = byId('attachForm');
+  if (attachForm) attachForm.addEventListener('submit', handleAttachSubmit);
+  const groupCancelBtn = byId('groupCancelBtn');
+  if (groupCancelBtn) groupCancelBtn.addEventListener('click', resetGroupForm);
+  const serverCancelBtn = byId('serverCancelBtn');
+  if (serverCancelBtn) serverCancelBtn.addEventListener('click', resetServerForm);
 
-  document.getElementById('serverSearchInput').addEventListener('input', event => {
-    state.serverSearch = event.target.value.trim().toLowerCase();
-    renderServerCards('serversListCards', state.servers || [], 'Список серверов пока пуст. Здесь же можно сразу создать первый сервер.');
-    renderStatuses(state.statuses || []);
-  });
+  const serverSearchInput = byId('serverSearchInput');
+  if (serverSearchInput) {
+    serverSearchInput.addEventListener('input', event => {
+      state.serverSearch = event.target.value.trim().toLowerCase();
+      renderServerCards('serversListCards', state.servers || [], 'Список серверов пока пуст. Здесь же можно сразу создать первый сервер.');
+      renderStatuses(state.statuses || []);
+    });
+  }
 
-  document.getElementById('groupSearchInput').addEventListener('input', event => {
-    state.groupSearch = event.target.value.trim().toLowerCase();
-    renderGroupsList(state.groups || []);
-  });
+  const groupSearchInput = byId('groupSearchInput');
+  if (groupSearchInput) {
+    groupSearchInput.addEventListener('input', event => {
+      state.groupSearch = event.target.value.trim().toLowerCase();
+      renderGroupsList(state.groups || []);
+    });
+  }
 
   document.body.addEventListener('click', handleCardActions);
 

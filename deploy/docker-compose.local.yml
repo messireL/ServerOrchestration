@@ -22,8 +22,8 @@ services:
     build:
       context: ../app/backend
       args:
-        APP_VERSION: 0.1.9
-    image: server-orchestration-backend-local:0.1.9
+        APP_VERSION: 0.1.11
+    image: server-orchestration-backend-local:0.1.11
     container_name: server-orchestration-backend
     restart: unless-stopped
     env_file:
@@ -33,6 +33,7 @@ services:
         condition: service_healthy
     environment:
       APP_NAME: ${APP_NAME:-server-orchestration}
+      APP_DISPLAY_NAME: ${APP_DISPLAY_NAME:-Система мониторинга}
       APP_TZ: ${APP_TZ:-Europe/Moscow}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-http://192.168.5.22:18080}
       DB_HOST: postgres

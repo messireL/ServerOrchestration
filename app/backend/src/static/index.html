@@ -3,16 +3,18 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ServerOrchestration</title>
+  <title>Система мониторинга</title>
+  <link rel="icon" type="image/x-icon" href="/static/assets/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/assets/favicon.png" />
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
   <div class="layout-shell">
     <aside class="sidebar">
       <div class="brand-card">
-        <div class="brand-mark">SO</div>
+        <img class="brand-logo" src="/static/assets/logo-monitoring-system.png" alt="Система мониторинга" />
         <div>
-          <div class="brand-title">ServerOrchestration</div>
+          <div class="brand-title">Система мониторинга</div>
           <div class="brand-subtitle">Единая панель контроля и управления серверами</div>
         </div>
       </div>
@@ -59,7 +61,7 @@
     <main class="main-shell">
       <header class="topbar card">
         <div>
-          <div class="eyebrow">Server orchestration</div>
+          <div class="eyebrow">Система мониторинга</div>
           <h1 id="pageTitle">Главная</h1>
           <p id="pageLead" class="muted lead">Сводка по инфраструктуре, актуальные статусы и быстрые действия.</p>
         </div>
@@ -116,11 +118,15 @@
           <article class="card panel">
             <div class="panel-head">
               <div>
-                <h2>Новый сервер</h2>
+                <h2 id="serverFormTitle">Новый сервер</h2>
                 <p class="muted">Управление inventory через веб-интерфейс. По умолчанию используется сервисный пользователь.</p>
+              </div>
+              <div class="panel-meta">
+                <span class="pill pill-neutral" id="serversCountLabel">0 серверов</span>
               </div>
             </div>
             <form class="stack-form" id="serverForm">
+              <input type="hidden" name="server_id" value="" />
               <div class="field-grid two-cols">
                 <label>
                   <span>Имя</span>
@@ -148,7 +154,10 @@
                 <label class="check"><input type="checkbox" name="has_3xui" /> <span>Есть 3x-ui</span></label>
                 <label class="check"><input type="checkbox" name="has_ssl_monitoring" /> <span>Проверять SSL</span></label>
               </div>
-              <button class="primary" type="submit">Добавить сервер</button>
+              <div class="action-row compact-actions">
+                <button class="primary" type="submit" id="serverSubmitBtn">Добавить сервер</button>
+                <button class="secondary hidden" type="button" id="serverCancelBtn">Отмена</button>
+              </div>
             </form>
           </article>
 
@@ -159,21 +168,29 @@
                 <p class="muted">Карточки серверов показывают текущий статус, группы и базовые признаки доступности.</p>
               </div>
             </div>
+            <label class="search-field">
+              <span>Поиск</span>
+              <input type="search" id="serverSearchInput" placeholder="Имя, host, ssh user, группа" />
+            </label>
             <div class="server-card-grid" id="serversListCards"></div>
           </article>
         </section>
       </section>
 
-      <section class="tab-view" data-view="groups">
+<section class="tab-view" data-view="groups">
         <section class="grid-two inventory-grid">
           <article class="card panel">
             <div class="panel-head">
               <div>
-                <h2>Новая группа</h2>
+                <h2 id="groupFormTitle">Новая группа</h2>
                 <p class="muted">Группы пригодятся для проверок, maintenance windows и дальнейших массовых действий.</p>
+              </div>
+              <div class="panel-meta">
+                <span class="pill pill-neutral" id="groupsCountLabel">0 групп</span>
               </div>
             </div>
             <form class="stack-form" id="groupForm">
+              <input type="hidden" name="group_id" value="" />
               <label>
                 <span>Название группы</span>
                 <input type="text" name="name" placeholder="prod" required />
@@ -182,7 +199,10 @@
                 <span>Описание</span>
                 <textarea name="description" rows="3" placeholder="Например, production-серверы или узлы с 3x-ui"></textarea>
               </label>
-              <button class="primary" type="submit">Создать группу</button>
+              <div class="action-row compact-actions">
+                <button class="primary" type="submit" id="groupSubmitBtn">Создать группу</button>
+                <button class="secondary hidden" type="button" id="groupCancelBtn">Отмена</button>
+              </div>
             </form>
           </article>
 
@@ -204,12 +224,30 @@
               </label>
               <button class="secondary" type="submit">Привязать сервер к группе</button>
             </form>
+            <label class="search-field">
+              <span>Поиск по группам</span>
+              <input type="search" id="groupSearchInput" placeholder="Название или описание группы" />
+            </label>
             <div class="groups-panel" id="groupsList"></div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Группа</th>
+                    <th>Сервер</th>
+                    <th>Host</th>
+                    <th>Создано</th>
+                    <th>Действие</th>
+                  </tr>
+                </thead>
+                <tbody id="groupLinkRows"></tbody>
+              </table>
+            </div>
           </article>
         </section>
       </section>
 
-      <section class="tab-view" data-view="checks">
+<section class="tab-view" data-view="checks">
         <section class="grid-two">
           <article class="card panel">
             <div class="panel-head">

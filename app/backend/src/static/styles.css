@@ -70,6 +70,17 @@ button, input, select, textarea { font: inherit; }
   box-shadow: var(--shadow-soft);
 }
 
+
+.brand-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  border-radius: 18px;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
+  background: radial-gradient(circle at center, rgba(219,234,254,0.9), rgba(255,255,255,0.92));
+  padding: 6px;
+}
+
 .brand-card {
   padding: 18px;
   display: flex;
@@ -78,6 +89,8 @@ button, input, select, textarea { font: inherit; }
 }
 
 .brand-mark {
+  display:none;
+
   width: 48px;
   height: 48px;
   border-radius: 14px;

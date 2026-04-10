@@ -1,6 +1,6 @@
-# ServerOrchestration
+# Система мониторинга
 
-ServerOrchestration — проект оркестрации управления Ubuntu-серверами с web GUI, PostgreSQL, scheduler/probe-слоем, alerting и исполнительным контуром для серверных операций.
+Система мониторинга — проект оркестрации управления Ubuntu-серверами с web GUI, PostgreSQL, scheduler/probe-слоем, alerting и исполнительным контуром для серверных операций.
 
 ## Базовые принципы
 - GitHub — основной источник кода.
@@ -11,9 +11,9 @@ ServerOrchestration — проект оркестрации управления
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.9`
+- Версия: `0.1.11`
 
-## Что входит в v0.1.9
+## Что входит в v0.1.11
 - backend API на FastAPI
 - PostgreSQL
 - таблицы inventory, `server_status` и `alerts`
@@ -47,7 +47,7 @@ ServerOrchestration — проект оркестрации управления
 
 ## Важное по Portainer и GHCR
 - В Portainer stack не требует вручную задавать `APP_VERSION` и `BACKEND_IMAGE`.
-- image backend зафиксирован в compose на релиз `0.1.9`.
+- image backend зафиксирован в compose на релиз `0.1.11`.
 - Базовая timezone проекта по умолчанию: `Europe/Moscow`.
 - Внешний URL панели задаётся через `APP_PUBLIC_BASE_URL` в env Portainer.
 
@@ -55,3 +55,9 @@ ServerOrchestration — проект оркестрации управления
 - Быстрые проверки (`ping`, потом HTTP/HTTPS и т.п.) остаются в собственном probe-слое проекта.
 - Ansible не используется как GUI и не используется для частого мониторинга.
 - Ansible будет подключаться как исполнительный контур для операций изменения: apt, timezone, reboot, 3x-ui update/restart, журналы.
+
+
+## Обновление v0.1.11
+- В проект интегрированы эмблема и favicon.
+- Пользовательское название панели: `Система мониторинга`.
+- Подготовлен базовый фирменный branding-контур для дальнейшей UI-полировки.
