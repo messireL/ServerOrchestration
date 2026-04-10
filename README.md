@@ -11,9 +11,9 @@ ServerOrchestration — проект оркестрации управления
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.5`
+- Версия: `0.1.6`
 
-## Что входит в v0.1.5
+## Что входит в v0.1.6
 - backend API на FastAPI
 - PostgreSQL
 - таблицы inventory, `server_status` и `alerts`
@@ -44,5 +44,5 @@ ServerOrchestration — проект оркестрации управления
 
 ## Важное по Portainer и GHCR
 - В Portainer stack не требует вручную задавать `APP_VERSION` и `BACKEND_IMAGE`.
-- image backend зафиксирован в compose на релиз `0.1.5`.
+- image backend зафиксирован в compose на релиз `0.1.6`.
 - Базовая timezone проекта по умолчанию: `Europe/Moscow`.

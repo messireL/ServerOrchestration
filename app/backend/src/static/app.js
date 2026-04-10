@@ -43,6 +43,14 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
+function renderMeta(versionInfo) {
+  document.getElementById('version').textContent = versionInfo.version || '—';
+  const tzEl = document.getElementById('timezoneValue');
+  if (tzEl) tzEl.textContent = versionInfo.timezone || '—';
+  const urlEl = document.getElementById('publicUrlValue');
+  if (urlEl) urlEl.textContent = versionInfo.public_base_url || '—';
+}
+
 function renderSummary(summary) {
   const cards = [
     ['Всего серверов', summary.servers_total, 'inventory'],
@@ -152,7 +160,7 @@ async function loadDashboard() {
     fetchJson(endpoints.servers),
   ]);
 
-  document.getElementById('version').textContent = `${version.version} / ${version.timezone}`;
+  renderMeta(version);
   renderSummary(summary);
   renderStatuses(statuses);
   renderAlerts(alerts);

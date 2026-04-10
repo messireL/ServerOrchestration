@@ -22,8 +22,8 @@ services:
     build:
       context: ../app/backend
       args:
-        APP_VERSION: 0.1.5
-    image: server-orchestration-backend-local:0.1.5
+        APP_VERSION: 0.1.6
+    image: server-orchestration-backend-local:0.1.6
     container_name: server-orchestration-backend
     restart: unless-stopped
     env_file:
@@ -34,6 +34,7 @@ services:
     environment:
       APP_NAME: ${APP_NAME:-server-orchestration}
       APP_TZ: ${APP_TZ:-Europe/Moscow}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-http://192.168.5.22:18080}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB:-orchestrator}
