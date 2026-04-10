@@ -22,8 +22,8 @@ services:
     build:
       context: ../app/backend
       args:
-        APP_VERSION: 0.1.6
-    image: server-orchestration-backend-local:0.1.6
+        APP_VERSION: 0.1.7
+    image: server-orchestration-backend-local:0.1.7
     container_name: server-orchestration-backend
     restart: unless-stopped
     env_file:

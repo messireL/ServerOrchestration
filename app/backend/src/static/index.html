@@ -7,193 +7,338 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <header class="hero">
-      <div>
-        <div class="eyebrow">Server orchestration</div>
-        <h1>Панель управления серверами</h1>
-        <p class="hero-text">
-          Инвентарь, ping-проверки, alerts и базовая оперативная сводка в одном окне.
-          Без унылой таблички из 2007-го — но и без карнавала с мигающими кнопками.
-        </p>
-      </div>
-      <div class="hero-actions">
-        <button class="primary" id="refreshBtn">Обновить данные</button>
-        <button class="accent" id="pingBtn">Запустить ping probe</button>
-        <div class="version-box">
-          <span class="muted">Версия</span>
-          <strong id="version">—</strong>
-          <span class="muted">TZ: <span id="timezoneValue">—</span></span>
-          <span class="muted">URL: <span id="publicUrlValue">—</span></span>
-        </div>
-      </div>
-    </header>
-
-    <section class="message-stack" id="messageStack"></section>
-
-    <section class="summary-grid" id="summaryCards"></section>
-
-    <section class="content-grid">
-      <article class="panel panel-forms">
-        <div class="panel-head">
-          <div>
-            <h2>Инвентарь</h2>
-            <p class="muted">Добавляйте серверы и группы уже через веб-интерфейс, без curl и шаманства.</p>
-          </div>
-        </div>
-
-        <div class="forms-grid">
-          <form class="subpanel" id="groupForm">
-            <div class="subpanel-head">
-              <h3>Новая группа</h3>
-              <span class="pill pill-info">groups</span>
-            </div>
-            <label>
-              <span>Название группы</span>
-              <input type="text" name="name" placeholder="Например, prod" required />
-            </label>
-            <label>
-              <span>Описание</span>
-              <textarea name="description" rows="3" placeholder="Кратко, что это за группа"></textarea>
-            </label>
-            <button class="primary" type="submit">Создать группу</button>
-          </form>
-
-          <form class="subpanel" id="serverForm">
-            <div class="subpanel-head">
-              <h3>Новый сервер</h3>
-              <span class="pill pill-info">servers</span>
-            </div>
-            <div class="field-grid two-cols">
-              <label>
-                <span>Имя</span>
-                <input type="text" name="name" placeholder="vm01" required />
-              </label>
-              <label>
-                <span>Host / IP</span>
-                <input type="text" name="host" placeholder="192.168.1.10" required />
-              </label>
-              <label>
-                <span>SSH порт</span>
-                <input type="number" name="ssh_port" value="22" min="1" max="65535" required />
-              </label>
-              <label>
-                <span>SSH пользователь</span>
-                <input type="text" name="ssh_user" value="srvops" required />
-              </label>
-            </div>
-            <label>
-              <span>Описание</span>
-              <textarea name="description" rows="3" placeholder="Например, тестовый сервер или reverse proxy"></textarea>
-            </label>
-            <div class="checkbox-row">
-              <label class="check"><input type="checkbox" name="is_enabled" checked /> <span>Сервер включён</span></label>
-              <label class="check"><input type="checkbox" name="has_3xui" /> <span>Есть 3x-ui</span></label>
-              <label class="check"><input type="checkbox" name="has_ssl_monitoring" /> <span>Проверять SSL</span></label>
-            </div>
-            <button class="primary" type="submit">Добавить сервер</button>
-          </form>
-        </div>
-
-        <form class="subpanel attach-panel" id="attachForm">
-          <div class="subpanel-head">
-            <h3>Привязка сервера к группе</h3>
-            <span class="pill pill-warning">relation</span>
-          </div>
-          <div class="field-grid three-cols">
-            <label>
-              <span>Группа</span>
-              <select id="attachGroupSelect" name="group_id" required></select>
-            </label>
-            <label>
-              <span>Сервер</span>
-              <select id="attachServerSelect" name="server_id" required></select>
-            </label>
-            <div class="attach-action-wrap">
-              <button class="secondary" type="submit">Привязать</button>
-            </div>
-          </div>
-        </form>
-      </article>
-
-      <aside class="side-column">
-        <article class="panel">
-          <div class="panel-head compact">
-            <div>
-              <h2>Группы</h2>
-              <p class="muted">Быстрый обзор и напоминание, что уже создано.</p>
-            </div>
-          </div>
-          <div class="mini-list" id="groupsList"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head compact">
-            <div>
-              <h2>Действия</h2>
-              <p class="muted">Оперативные кнопки под рукой.</p>
-            </div>
-          </div>
-          <div class="action-stack">
-            <button class="accent" id="pingBtnSide">Запустить ping probe сейчас</button>
-            <button class="ghost" id="refreshBtnSide">Обновить dashboard</button>
-          </div>
-        </article>
-      </aside>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
+  <div class="layout-shell">
+    <aside class="sidebar">
+      <div class="brand-card">
+        <div class="brand-mark">SO</div>
         <div>
-          <h2>Статусы серверов</h2>
-          <p class="muted">Текущее состояние по inventory, группам, ping и активным alert.</p>
+          <div class="brand-title">ServerOrchestration</div>
+          <div class="brand-subtitle">Управление серверами без лишней драмы</div>
         </div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Сервер</th>
-              <th>Host</th>
-              <th>SSH</th>
-              <th>Группы</th>
-              <th>Ping</th>
-              <th>Latency</th>
-              <th>Alerts</th>
-              <th>Последняя проверка</th>
-              <th>Ошибка</th>
-            </tr>
-          </thead>
-          <tbody id="statusRows"></tbody>
-        </table>
-      </div>
-    </section>
 
-    <section class="panel">
-      <div class="panel-head">
+      <nav class="nav-menu" id="navMenu">
+        <button class="nav-item active" data-tab="dashboard">
+          <span class="nav-icon">▣</span>
+          <span>Главная</span>
+        </button>
+        <button class="nav-item" data-tab="servers">
+          <span class="nav-icon">🖥</span>
+          <span>Серверы</span>
+        </button>
+        <button class="nav-item" data-tab="groups">
+          <span class="nav-icon">◫</span>
+          <span>Группы</span>
+        </button>
+        <button class="nav-item" data-tab="checks">
+          <span class="nav-icon">⌁</span>
+          <span>Проверки</span>
+        </button>
+        <button class="nav-item" data-tab="alerts">
+          <span class="nav-icon">⚠</span>
+          <span>Оповещения</span>
+        </button>
+        <button class="nav-item" data-tab="roadmap">
+          <span class="nav-icon">↗</span>
+          <span>Дальше</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-meta card">
+        <div class="meta-row"><span>Версия</span><strong id="version">—</strong></div>
+        <div class="meta-row"><span>TZ</span><strong id="timezoneValue">—</strong></div>
+        <div class="meta-row vertical"><span>URL панели</span><strong class="truncate" id="publicUrlValue">—</strong></div>
+      </div>
+
+      <div class="sidebar-actions card">
+        <button class="primary full-width" id="refreshBtn">Обновить данные</button>
+        <button class="accent full-width" id="pingBtn">Запустить ping probe</button>
+      </div>
+    </aside>
+
+    <main class="main-shell">
+      <header class="topbar card">
         <div>
-          <h2>Активные alerts</h2>
-          <p class="muted">Если тут пусто — значит пока жизнь не пытается нас удивить.</p>
+          <div class="eyebrow">Server orchestration</div>
+          <h1 id="pageTitle">Главная</h1>
+          <p id="pageLead" class="muted lead">Сводка по инфраструктуре, status-карточки и быстрые действия.</p>
         </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Сервер</th>
-              <th>Тип</th>
-              <th>Severity</th>
-              <th>Сообщение</th>
-              <th>Впервые</th>
-              <th>Последнее событие</th>
-            </tr>
-          </thead>
-          <tbody id="alertRows"></tbody>
-        </table>
-      </div>
-    </section>
+        <div class="topbar-badges">
+          <span class="pill pill-info">GitHub → Portainer</span>
+          <span class="pill pill-neutral">Non-root containers</span>
+        </div>
+      </header>
+
+      <section class="message-stack" id="messageStack"></section>
+
+      <section class="tab-view active" data-view="dashboard">
+        <section class="summary-grid" id="summaryCards"></section>
+
+        <section class="grid-two">
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Быстрые действия</h2>
+                <p class="muted">Тут только нужное: обновить данные, прогнать probe и глянуть на проблемные зоны.</p>
+              </div>
+            </div>
+            <div class="action-row">
+              <button class="primary" id="refreshBtnMain">Обновить dashboard</button>
+              <button class="accent" id="pingBtnMain">Запустить ping probe</button>
+            </div>
+            <div class="info-grid compact" id="quickStats"></div>
+          </article>
+
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Активные alerts</h2>
+                <p class="muted">Короткий список того, что сейчас требует внимания.</p>
+              </div>
+            </div>
+            <div class="mini-alert-list" id="alertsPreview"></div>
+          </article>
+        </section>
+
+        <section class="card panel">
+          <div class="panel-head">
+            <div>
+              <h2>Серверы и статусы</h2>
+              <p class="muted">На главной оставляем короткую, но полезную сводку — не мешанину из всего подряд.</p>
+            </div>
+          </div>
+          <div class="server-card-grid" id="dashboardServerCards"></div>
+        </section>
+      </section>
+
+      <section class="tab-view" data-view="servers">
+        <section class="grid-two inventory-grid">
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Новый сервер</h2>
+                <p class="muted">Добавляем серверы уже через UI. По умолчанию используем service-user, а не root.</p>
+              </div>
+            </div>
+            <form class="stack-form" id="serverForm">
+              <div class="field-grid two-cols">
+                <label>
+                  <span>Имя</span>
+                  <input type="text" name="name" placeholder="vm01" required />
+                </label>
+                <label>
+                  <span>Host / IP</span>
+                  <input type="text" name="host" placeholder="192.168.5.10" required />
+                </label>
+                <label>
+                  <span>SSH порт</span>
+                  <input type="number" name="ssh_port" value="22" min="1" max="65535" required />
+                </label>
+                <label>
+                  <span>SSH пользователь</span>
+                  <input type="text" name="ssh_user" value="srvops" required />
+                </label>
+              </div>
+              <label>
+                <span>Описание</span>
+                <textarea name="description" rows="3" placeholder="Например, reverse proxy или тестовый сервер"></textarea>
+              </label>
+              <div class="checkbox-row">
+                <label class="check"><input type="checkbox" name="is_enabled" checked /> <span>Сервер включён</span></label>
+                <label class="check"><input type="checkbox" name="has_3xui" /> <span>Есть 3x-ui</span></label>
+                <label class="check"><input type="checkbox" name="has_ssl_monitoring" /> <span>Проверять SSL</span></label>
+              </div>
+              <button class="primary" type="submit">Добавить сервер</button>
+            </form>
+          </article>
+
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Список серверов</h2>
+                <p class="muted">Здесь уже видно, кто жив, где группы, и где скоро начнётся весёлое администрирование.</p>
+              </div>
+            </div>
+            <div class="server-card-grid" id="serversListCards"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="tab-view" data-view="groups">
+        <section class="grid-two inventory-grid">
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Новая группа</h2>
+                <p class="muted">Группы пригодятся для проверок, maintenance windows и дальнейших массовых действий.</p>
+              </div>
+            </div>
+            <form class="stack-form" id="groupForm">
+              <label>
+                <span>Название группы</span>
+                <input type="text" name="name" placeholder="prod" required />
+              </label>
+              <label>
+                <span>Описание</span>
+                <textarea name="description" rows="3" placeholder="Например, production-серверы или узлы с 3x-ui"></textarea>
+              </label>
+              <button class="primary" type="submit">Создать группу</button>
+            </form>
+          </article>
+
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Привязка серверов</h2>
+                <p class="muted">Собираем inventory без магии: сервер → группа, дальше уже можно делать нормальные сценарии.</p>
+              </div>
+            </div>
+            <form class="stack-form" id="attachForm">
+              <label>
+                <span>Группа</span>
+                <select id="attachGroupSelect" name="group_id" required></select>
+              </label>
+              <label>
+                <span>Сервер</span>
+                <select id="attachServerSelect" name="server_id" required></select>
+              </label>
+              <button class="secondary" type="submit">Привязать сервер к группе</button>
+            </form>
+            <div class="groups-panel" id="groupsList"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="tab-view" data-view="checks">
+        <section class="grid-two">
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Доступные проверки</h2>
+                <p class="muted">Сейчас рабочий контур — ping. Остальные разделы уже выделены под следующий функционал.</p>
+              </div>
+            </div>
+            <div class="check-card-grid">
+              <div class="check-card active-check">
+                <div>
+                  <div class="check-title">Ping probe</div>
+                  <div class="muted">Проверка ICMP-доступности и запись результата в server_status.</div>
+                </div>
+                <button class="accent" id="pingBtnChecks">Запустить сейчас</button>
+              </div>
+              <div class="check-card disabled-check">
+                <div class="check-title">3x-ui console</div>
+                <div class="muted">Проверка web-панели и статуса порта.</div>
+              </div>
+              <div class="check-card disabled-check">
+                <div class="check-title">3x-ui subscription</div>
+                <div class="muted">Проверка ссылки подписки, browser-mode, base64 и метаданных.</div>
+              </div>
+              <div class="check-card disabled-check">
+                <div class="check-title">SSL</div>
+                <div class="muted">Срок действия, warning/critical, путь к файлу и проверка корректности.</div>
+              </div>
+              <div class="check-card disabled-check">
+                <div class="check-title">SSH / timezone / apt</div>
+                <div class="muted">Следующий слой после UI-перестройки.</div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Таблица статусов</h2>
+                <p class="muted">Полный список — отдельно, чтобы дашборд не превращался в портал страданий.</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Сервер</th>
+                    <th>Host</th>
+                    <th>SSH</th>
+                    <th>Группы</th>
+                    <th>Ping</th>
+                    <th>Latency</th>
+                    <th>Alerts</th>
+                    <th>Последняя проверка</th>
+                    <th>Ошибка</th>
+                  </tr>
+                </thead>
+                <tbody id="statusRows"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <section class="tab-view" data-view="alerts">
+        <section class="card panel">
+          <div class="panel-head">
+            <div>
+              <h2>Активные оповещения</h2>
+              <p class="muted">Тут отдельно живут alerts, чтобы их не прятать между формами и карточками.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Сервер</th>
+                  <th>Тип</th>
+                  <th>Severity</th>
+                  <th>Сообщение</th>
+                  <th>Впервые</th>
+                  <th>Последнее событие</th>
+                </tr>
+              </thead>
+              <tbody id="alertRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="tab-view" data-view="roadmap">
+        <section class="grid-two">
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Ближайшие модули</h2>
+                <p class="muted">После UI-перестройки уже можно спокойно расширять функционал, не запихивая всё в одну страницу.</p>
+              </div>
+            </div>
+            <div class="roadmap-list">
+              <div class="roadmap-item"><strong>3x-ui</strong><span>console, subscription, base64, трафик, лимиты, browser-mode запросы</span></div>
+              <div class="roadmap-item"><strong>SSL</strong><span>сроки, состояния, warning/critical, проверка файла и цепочки</span></div>
+              <div class="roadmap-item"><strong>SSH / timezone</strong><span>проверка доступности, timezone и drift времени</span></div>
+              <div class="roadmap-item"><strong>APT / reboot</strong><span>обновления, reboot-required, maintenance windows</span></div>
+              <div class="roadmap-item"><strong>Журналы</strong><span>UFW, auth, 3x-ui, системные события и фильтры</span></div>
+            </div>
+          </article>
+
+          <article class="card panel">
+            <div class="panel-head">
+              <div>
+                <h2>Архитектурные решения</h2>
+                <p class="muted">Коротко и по делу — чтобы новый чат не начинался с археологии и спиритизма.</p>
+              </div>
+            </div>
+            <ul class="decision-list">
+              <li>GitHub — основной источник кода проекта.</li>
+              <li>Portainer — основной deploy/update.</li>
+              <li>Docker Compose — обязательный формат поставки.</li>
+              <li>Приложение внутри контейнеров работает non-root.</li>
+              <li>Ping и быстрые probes идут отдельным слоем, не через Ansible.</li>
+              <li>Ansible остаётся исполнительным контуром для операций изменения.</li>
+            </ul>
+          </article>
+        </section>
+      </section>
+    </main>
   </div>
 
   <script src="/static/app.js"></script>

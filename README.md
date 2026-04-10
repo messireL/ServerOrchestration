@@ -11,29 +11,35 @@ ServerOrchestration — проект оркестрации управления
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.6`
+- Версия: `0.1.7`
 
-## Что входит в v0.1.6
+## Что входит в v0.1.7
 - backend API на FastAPI
 - PostgreSQL
 - таблицы inventory, `server_status` и `alerts`
 - health/version endpoints
 - inventory endpoints для серверов, групп и связей
-- web dashboard на `/` с более аккуратным оформлением
+- ping probe и запись результата в `server_status`
+- заготовка alerting по событию `ping_down`
+- новый UI с **левым меню** и отдельными разделами:
+  - Главная
+  - Серверы
+  - Группы
+  - Проверки
+  - Оповещения
+  - Дальше
 - web-формы для добавления серверов и групп
 - web-форма привязки сервера к группе
-- ручной запуск ping probe из web-интерфейса и API
-- сохранение результата ping в `server_status`
-- заготовка alerting по событию `ping_down`
 - Portainer stack из Git-репозитория
 - GitHub Actions workflow для публикации backend image в GHCR
 
 ## Что уже можно делать через веб-интерфейс
+- смотреть dashboard и summary
 - создавать группы
 - добавлять серверы
 - привязывать серверы к группам
 - запускать ping probe
-- смотреть статусы и alerts
+- смотреть статусы и alerts по отдельным разделам, а не в одной длинной простыне
 
 ## Структура
 - `app/backend` — исходники backend и встроенного web UI
@@ -44,5 +50,6 @@ ServerOrchestration — проект оркестрации управления
 
 ## Важное по Portainer и GHCR
 - В Portainer stack не требует вручную задавать `APP_VERSION` и `BACKEND_IMAGE`.
-- image backend зафиксирован в compose на релиз `0.1.6`.
+- image backend зафиксирован в compose на релиз `0.1.7`.
 - Базовая timezone проекта по умолчанию: `Europe/Moscow`.
+- Внешний URL панели задаётся через `APP_PUBLIC_BASE_URL` в env Portainer.
