@@ -1,6 +1,8 @@
 # Bugs 0.1.1
 
-## Известные ограничения
-1. Frontend ещё отсутствует — работа пока через API.
-2. Stack для Portainer использует уже собранный image из GHCR.
-3. После первого push в GitHub нужно дождаться завершения workflow публикации image.
+## Выявленные баги
+1. Portainer Git stack падал с ошибкой `service "backend" has neither an image nor a build context specified`, если не был задан `BACKEND_IMAGE`.
+2. Неудобно было требовать ручное указание `APP_VERSION` в Portainer stack variables на каждом релизе.
+
+## Статус
+Исправлено в релизе 0.1.2.

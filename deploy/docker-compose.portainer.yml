@@ -4,36 +4,35 @@ services:
     container_name: server-orchestration-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      TZ: ${APP_TZ}
+      POSTGRES_DB: ${POSTGRES_DB:-orchestrator}
+      POSTGRES_USER: ${POSTGRES_USER:-orchestrator}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME}
+      TZ: ${APP_TZ:-UTC}
     volumes:
       - server_orchestration_postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-orchestrator} -d ${POSTGRES_DB:-orchestrator}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   backend:
-    image: ${BACKEND_IMAGE}
+    image: ${BACKEND_IMAGE:-ghcr.io/messirel/serverorchestration-backend:0.1.2}
     container_name: server-orchestration-backend
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      APP_NAME: ${APP_NAME}
-      APP_VERSION: ${APP_VERSION}
-      APP_TZ: ${APP_TZ}
+      APP_NAME: ${APP_NAME:-server-orchestration}
+      APP_TZ: ${APP_TZ:-UTC}
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: ${POSTGRES_DB}
-      DB_USER: ${POSTGRES_USER}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB:-orchestrator}
+      DB_USER: ${POSTGRES_USER:-orchestrator}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME}
     ports:
-      - "${BACKEND_BIND_IP}:${BACKEND_PORT}:8080"
+      - "${BACKEND_BIND_IP:-127.0.0.1}:${BACKEND_PORT:-18080}:8080"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
       interval: 15s

@@ -11,9 +11,9 @@ ServerOrchestration — проект оркестрации управления
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.1`
+- Версия: `0.1.2`
 
-## Что входит в v0.1.1
+## Что входит в v0.1.2
 - backend API на FastAPI
 - PostgreSQL
 - таблицы inventory и `server_status`
@@ -21,9 +21,11 @@ ServerOrchestration — проект оркестрации управления
 - стартовые inventory endpoints
 - Portainer stack из Git-репозитория
 - GitHub Actions workflow для публикации backend image в GHCR
+- hotfix для Portainer env: безопасные значения по умолчанию и отсутствие обязательной `APP_VERSION` в stack variables
 
 ## Структура
 - `app/backend` — исходники backend
 - `deploy` — stack для Portainer
 - `docs` — документация проекта и релизов
 - `.github/workflows` — публикация backend image в GHCR
+- `VERSION` — версия текущего релиза

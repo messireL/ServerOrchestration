@@ -18,7 +18,7 @@ from src.db import (
 )
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.1")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.2")
 APP_TZ = os.getenv("APP_TZ", "UTC")
 
 @asynccontextmanager

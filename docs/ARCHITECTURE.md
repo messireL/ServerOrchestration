@@ -13,3 +13,8 @@
 ## Важный нюанс Portainer
 Stack из Git-репозитория в Portainer лучше использовать с уже готовыми image из registry.
 Для этого в проект добавлен GitHub Actions workflow, который публикует backend image в GHCR.
+
+## Актуальное уточнение v0.1.2
+- `APP_VERSION` больше не требуется указывать в Portainer stack variables.
+- Версия релиза хранится в файле `VERSION` и встраивается в backend image при сборке.
+- Compose для Portainer использует значения по умолчанию, чтобы stack не падал из-за пропущенного `BACKEND_IMAGE`.

@@ -4,9 +4,11 @@ on:
   push:
     branches: ["main"]
     paths:
+      - 'VERSION'
       - 'app/backend/**'
       - '.github/workflows/publish-backend-image.yml'
       - 'deploy/stack.env.example'
+      - 'deploy/docker-compose.portainer.yml'
 
 permissions:
   contents: read
@@ -20,10 +22,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
-      - name: Read version from stack.env.example
+      - name: Read version from VERSION file
         id: version
         run: |
-          APP_VERSION="$(grep '^APP_VERSION=' deploy/stack.env.example | cut -d'=' -f2)"
+          APP_VERSION="$(tr -d '\n' < VERSION)"
           echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -51,6 +53,8 @@ jobs:
         with:
           context: ./app/backend
           file: ./app/backend/Dockerfile
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.app_version }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
