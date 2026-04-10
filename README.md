@@ -11,28 +11,32 @@ ServerOrchestration — проект оркестрации управления
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.4`
+- Версия: `0.1.5`
 
-## Что входит в v0.1.4
+## Что входит в v0.1.5
 - backend API на FastAPI
 - PostgreSQL
 - таблицы inventory, `server_status` и `alerts`
 - health/version endpoints
-- стартовые inventory endpoints
-- read-only web dashboard на `/`
+- inventory endpoints для серверов, групп и связей
+- web dashboard на `/` с более аккуратным оформлением
+- web-формы для добавления серверов и групп
+- web-форма привязки сервера к группе
 - ручной запуск ping probe из web-интерфейса и API
 - сохранение результата ping в `server_status`
 - заготовка alerting по событию `ping_down`
 - Portainer stack из Git-репозитория
 - GitHub Actions workflow для публикации backend image в GHCR
 
-## Что пока не делаем вручную
-- серверы пока не заводим через API/curl в рабочем контуре;
-- отдельный экран добавления/редактирования серверов будет следующим шагом;
-- текущий web-интерфейс в `v0.1.4` — это foundation для просмотра статусов, alerts и запуска ping probe.
+## Что уже можно делать через веб-интерфейс
+- создавать группы
+- добавлять серверы
+- привязывать серверы к группам
+- запускать ping probe
+- смотреть статусы и alerts
 
 ## Структура
-- `app/backend` — исходники backend
+- `app/backend` — исходники backend и встроенного web UI
 - `deploy` — stack для Portainer
 - `docs` — документация проекта и релизов
 - `.github/workflows` — публикация backend image в GHCR
@@ -40,5 +44,5 @@ ServerOrchestration — проект оркестрации управления
 
 ## Важное по Portainer и GHCR
 - В Portainer stack не требует вручную задавать `APP_VERSION` и `BACKEND_IMAGE`.
-- image backend зафиксирован в compose на релиз `0.1.4`.
+- image backend зафиксирован в compose на релиз `0.1.5`.
 - Базовая timezone проекта по умолчанию: `Europe/Moscow`.

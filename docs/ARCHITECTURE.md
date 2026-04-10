@@ -10,13 +10,13 @@
 - Быстрые проверки (`ping`, HTTP/HTTPS probe, порты, 3x-ui console/subscription) идут отдельным probe-слоем, не через Ansible.
 - Ansible используется как исполнительный слой для операций изменения: apt, timezone, reboot, 3x-ui update/restart, сбор журналов и т.п.
 
-## Актуальное уточнение v0.1.4
-- В проект добавлен базовый web dashboard на `/`.
-- Dashboard сейчас read-only: показывает summary, статусы серверов, active alerts.
-- Из dashboard можно вручную запускать `ping probe`.
-- Результаты probe пишутся в `server_status`.
-- При проблеме ping создаётся active alert типа `ping_down`, при восстановлении — alert переводится в `resolved`.
-- Отдельный полноценный inventory UI для добавления/редактирования серверов будет следующим шагом.
+## Актуальное уточнение v0.1.5
+- В проект добавлен более выразительный web dashboard на `/`.
+- Dashboard теперь не только показывает summary, статусы и alerts, но и даёт формы inventory.
+- Через UI можно создавать группы, добавлять серверы и привязывать серверы к группам.
+- Ручной `ping probe` доступен и из API, и из web-интерфейса.
+- Основной UI пока остаётся single-page интерфейсом, который обслуживается самим backend.
+- Следующий шаг после этого релиза — расширение операторского контура: bulk actions, richer cards, probe history и дальнейшие server checks.
 
 ## Важный нюанс Portainer
 Stack из Git-репозитория в Portainer лучше использовать с уже готовыми image из registry.

@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ServerOrchestration</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">Server orchestration</div>
+        <h1>Панель управления серверами</h1>
+        <p class="hero-text">
+          Инвентарь, ping-проверки, alerts и базовая оперативная сводка в одном окне.
+          Без унылой таблички из 2007-го — но и без карнавала с мигающими кнопками.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <button class="primary" id="refreshBtn">Обновить данные</button>
+        <button class="accent" id="pingBtn">Запустить ping probe</button>
+        <div class="version-box">
+          <span class="muted">Версия</span>
+          <strong id="version">—</strong>
+        </div>
+      </div>
+    </header>
+
+    <section class="message-stack" id="messageStack"></section>
+
+    <section class="summary-grid" id="summaryCards"></section>
+
+    <section class="content-grid">
+      <article class="panel panel-forms">
+        <div class="panel-head">
+          <div>
+            <h2>Инвентарь</h2>
+            <p class="muted">Добавляйте серверы и группы уже через веб-интерфейс, без curl и шаманства.</p>
+          </div>
+        </div>
+
+        <div class="forms-grid">
+          <form class="subpanel" id="groupForm">
+            <div class="subpanel-head">
+              <h3>Новая группа</h3>
+              <span class="pill pill-info">groups</span>
+            </div>
+            <label>
+              <span>Название группы</span>
+              <input type="text" name="name" placeholder="Например, prod" required />
+            </label>
+            <label>
+              <span>Описание</span>
+              <textarea name="description" rows="3" placeholder="Кратко, что это за группа"></textarea>
+            </label>
+            <button class="primary" type="submit">Создать группу</button>
+          </form>
+
+          <form class="subpanel" id="serverForm">
+            <div class="subpanel-head">
+              <h3>Новый сервер</h3>
+              <span class="pill pill-info">servers</span>
+            </div>
+            <div class="field-grid two-cols">
+              <label>
+                <span>Имя</span>
+                <input type="text" name="name" placeholder="vm01" required />
+              </label>
+              <label>
+                <span>Host / IP</span>
+                <input type="text" name="host" placeholder="192.168.1.10" required />
+              </label>
+              <label>
+                <span>SSH порт</span>
+                <input type="number" name="ssh_port" value="22" min="1" max="65535" required />
+              </label>
+              <label>
+                <span>SSH пользователь</span>
+                <input type="text" name="ssh_user" value="srvops" required />
+              </label>
+            </div>
+            <label>
+              <span>Описание</span>
+              <textarea name="description" rows="3" placeholder="Например, тестовый сервер или reverse proxy"></textarea>
+            </label>
+            <div class="checkbox-row">
+              <label class="check"><input type="checkbox" name="is_enabled" checked /> <span>Сервер включён</span></label>
+              <label class="check"><input type="checkbox" name="has_3xui" /> <span>Есть 3x-ui</span></label>
+              <label class="check"><input type="checkbox" name="has_ssl_monitoring" /> <span>Проверять SSL</span></label>
+            </div>
+            <button class="primary" type="submit">Добавить сервер</button>
+          </form>
+        </div>
+
+        <form class="subpanel attach-panel" id="attachForm">
+          <div class="subpanel-head">
+            <h3>Привязка сервера к группе</h3>
+            <span class="pill pill-warning">relation</span>
+          </div>
+          <div class="field-grid three-cols">
+            <label>
+              <span>Группа</span>
+              <select id="attachGroupSelect" name="group_id" required></select>
+            </label>
+            <label>
+              <span>Сервер</span>
+              <select id="attachServerSelect" name="server_id" required></select>
+            </label>
+            <div class="attach-action-wrap">
+              <button class="secondary" type="submit">Привязать</button>
+            </div>
+          </div>
+        </form>
+      </article>
+
+      <aside class="side-column">
+        <article class="panel">
+          <div class="panel-head compact">
+            <div>
+              <h2>Группы</h2>
+              <p class="muted">Быстрый обзор и напоминание, что уже создано.</p>
+            </div>
+          </div>
+          <div class="mini-list" id="groupsList"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head compact">
+            <div>
+              <h2>Действия</h2>
+              <p class="muted">Оперативные кнопки под рукой.</p>
+            </div>
+          </div>
+          <div class="action-stack">
+            <button class="accent" id="pingBtnSide">Запустить ping probe сейчас</button>
+            <button class="ghost" id="refreshBtnSide">Обновить dashboard</button>
+          </div>
+        </article>
+      </aside>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Статусы серверов</h2>
+          <p class="muted">Текущее состояние по inventory, группам, ping и активным alert.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Сервер</th>
+              <th>Host</th>
+              <th>SSH</th>
+              <th>Группы</th>
+              <th>Ping</th>
+              <th>Latency</th>
+              <th>Alerts</th>
+              <th>Последняя проверка</th>
+              <th>Ошибка</th>
+            </tr>
+          </thead>
+          <tbody id="statusRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Активные alerts</h2>
+          <p class="muted">Если тут пусто — значит пока жизнь не пытается нас удивить.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Сервер</th>
+              <th>Тип</th>
+              <th>Severity</th>
+              <th>Сообщение</th>
+              <th>Впервые</th>
+              <th>Последнее событие</th>
+            </tr>
+          </thead>
+          <tbody id="alertRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
