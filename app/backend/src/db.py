@@ -3,6 +3,7 @@ from typing import Any
 
 from psycopg import connect
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 
 def get_conn():
@@ -433,13 +434,24 @@ def list_enabled_servers() -> list[dict[str, Any]]:
             return cur.fetchall()
 
 
+
+def _status_summary_json(**payload: Any) -> Jsonb:
+    return Jsonb(payload)
+
+
 def update_ping_status(server_id: int, ping_ok: bool | None, ping_latency_ms: int | None, error: str | None):
+    summary_json = _status_summary_json(
+        ping_ok=ping_ok,
+        ping_latency_ms=ping_latency_ms,
+        last_error=error,
+        last_probe="ping",
+    )
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO server_status (server_id, ping_ok, ping_latency_ms, last_error, last_check_at, updated_at, summary_json)
-                VALUES (%s, %s, %s, %s, NOW(), NOW(), jsonb_build_object('ping_ok', %s, 'ping_latency_ms', %s, 'last_error', %s, 'last_probe', 'ping'))
+                VALUES (%s, %s, %s, %s, NOW(), NOW(), %s)
                 ON CONFLICT (server_id)
                 DO UPDATE SET
                     ping_ok = EXCLUDED.ping_ok,
@@ -449,18 +461,24 @@ def update_ping_status(server_id: int, ping_ok: bool | None, ping_latency_ms: in
                     updated_at = NOW(),
                     summary_json = server_status.summary_json || EXCLUDED.summary_json;
                 """,
-                (server_id, ping_ok, ping_latency_ms, error, ping_ok, ping_latency_ms, error),
+                (server_id, ping_ok, ping_latency_ms, error, summary_json),
             )
         conn.commit()
 
 
 def update_ssh_status(server_id: int, ssh_ok: bool | None, ssh_latency_ms: int | None, error: str | None):
+    summary_json = _status_summary_json(
+        ssh_ok=ssh_ok,
+        ssh_latency_ms=ssh_latency_ms,
+        last_error=error,
+        last_probe="ssh",
+    )
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO server_status (server_id, ssh_ok, ssh_latency_ms, last_error, last_check_at, updated_at, summary_json)
-                VALUES (%s, %s, %s, %s, NOW(), NOW(), jsonb_build_object('ssh_ok', %s, 'ssh_latency_ms', %s, 'last_error', %s, 'last_probe', 'ssh'))
+                VALUES (%s, %s, %s, %s, NOW(), NOW(), %s)
                 ON CONFLICT (server_id)
                 DO UPDATE SET
                     ssh_ok = EXCLUDED.ssh_ok,
@@ -470,18 +488,25 @@ def update_ssh_status(server_id: int, ssh_ok: bool | None, ssh_latency_ms: int |
                     updated_at = NOW(),
                     summary_json = server_status.summary_json || EXCLUDED.summary_json;
                 """,
-                (server_id, ssh_ok, ssh_latency_ms, error, ssh_ok, ssh_latency_ms, error),
+                (server_id, ssh_ok, ssh_latency_ms, error, summary_json),
             )
         conn.commit()
 
 
 def update_http_status(server_id: int, http_ok: bool | None, http_status_code: int | None, http_response_ms: int | None, error: str | None):
+    summary_json = _status_summary_json(
+        http_ok=http_ok,
+        http_status_code=http_status_code,
+        http_response_ms=http_response_ms,
+        last_error=error,
+        last_probe="http",
+    )
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO server_status (server_id, http_ok, http_status_code, http_response_ms, last_error, last_check_at, updated_at, summary_json)
-                VALUES (%s, %s, %s, %s, %s, NOW(), NOW(), jsonb_build_object('http_ok', %s, 'http_status_code', %s, 'http_response_ms', %s, 'last_error', %s, 'last_probe', 'http'))
+                VALUES (%s, %s, %s, %s, %s, NOW(), NOW(), %s)
                 ON CONFLICT (server_id)
                 DO UPDATE SET
                     http_ok = EXCLUDED.http_ok,
@@ -492,7 +517,7 @@ def update_http_status(server_id: int, http_ok: bool | None, http_status_code: i
                     updated_at = NOW(),
                     summary_json = server_status.summary_json || EXCLUDED.summary_json;
                 """,
-                (server_id, http_ok, http_status_code, http_response_ms, error, http_ok, http_status_code, http_response_ms, error),
+                (server_id, http_ok, http_status_code, http_response_ms, error, summary_json),
             )
         conn.commit()
 

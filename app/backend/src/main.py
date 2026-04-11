@@ -38,7 +38,7 @@ from src.probes import get_ping_diagnostics, run_http_check, run_ping, run_tcp_c
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.19")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.20")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 STATIC_DIR = Path(__file__).resolve().parent / "static"

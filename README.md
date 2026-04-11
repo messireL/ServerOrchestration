@@ -11,9 +11,9 @@
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.19`
+- Версия: `0.1.20`
 
-## Что входит в v0.1.19
+## Что входит в v0.1.20
 - backend API на FastAPI;
 - PostgreSQL;
 - inventory, `server_status` и `alerts`;
@@ -23,9 +23,9 @@
 - проверка HTTP/HTTPS по `web_url` с browser-like headers;
 - schema-sync legacy-колонок `server_status` и `servers`;
 - ping / ssh / http probe-endpoints не валят API `500` из-за проблем записи статуса;
-- контейнер backend дополнительно подготовлен для non-root ICMP ping: в image выставляется `setcap` для `ping`, а в compose добавлен `cap_add: NET_RAW`;
-- добавлена ping diagnostics endpoint `/api/probes/ping/diagnostics` для быстрой проверки наличия `ping` и self-test внутри контейнера;
-- UI теперь показывает warning-сообщение с первой причиной ошибки ping, а не делает вид, что всё прекрасно, пока проверка тихо страдает;
+- контейнер backend подготовлен для non-root ICMP ping: в image выставляется `setcap` для `ping`, а в compose добавлен `cap_add: NET_RAW`;
+- добавлена ping diagnostics endpoint `/api/probes/ping/diagnostics`;
+- исправлена запись результатов ping/ssh/http в `server_status.summary_json`: теперь JSON передаётся как typed `jsonb`, и PostgreSQL больше не падает на `could not determine data type of parameter` при `NULL`-значениях;
 - alerts по `ping_down`, `ssh_down`, `http_down`;
 - web UI с левым меню, светлой и тёмной темой;
 - Portainer stack из Git-репозитория;
