@@ -11,9 +11,9 @@
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.15`
+- Версия: `0.1.16`
 
-## Что входит в v0.1.15
+## Что входит в v0.1.16
 - backend API на FastAPI;
 - PostgreSQL;
 - inventory, `server_status` и `alerts`;
@@ -21,6 +21,7 @@
 - ping probe;
 - проверка доступности SSH-порта;
 - проверка HTTP/HTTPS по `web_url` с browser-like headers;
+- hotfix по inventory-форме: поле `Web URL`, чекбокс `Проверять HTTP/HTTPS` и рабочая кнопка `Добавить сервер`;
 - alerts по `ping_down`, `ssh_down`, `http_down`;
 - web UI с левым меню, светлой и тёмной темой;
 - Portainer stack из Git-репозитория;

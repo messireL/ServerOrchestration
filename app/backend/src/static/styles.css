@@ -595,3 +595,8 @@ textarea { resize: vertical; }
 .small-text {
   font-size: 12px;
 }
+
+
+.two-cols-span {
+  grid-column: 1 / -1;
+}

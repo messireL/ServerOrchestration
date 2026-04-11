@@ -17,7 +17,7 @@
 - в релизе обязательно описывается, какой compose-файл использовать;
 - описываются шаги проверки контейнеров, health endpoint и логов.
 
-## Дополнение v0.1.15
+## Дополнение v0.1.16
 - Для релизов probe-слоя обязательно обновляются `README.md`, `docs/TZ.md`, `docs/ARCHITECTURE.md`, `docs/TRANSFER_TO_NEW_CHAT.md` и `docs/releases/<version>/*`.
 - Если меняется inventory-модель, нужно отдельно проверить создание, редактирование и сохранение новых полей через UI.
 - Для release по доступности обязательно проверять `/health`, `/version`, `/api/summary`, `/api/status/servers`, `/api/alerts` и профильные probe-endpoints.

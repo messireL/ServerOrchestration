@@ -147,6 +147,10 @@
                   <span>SSH пользователь</span>
                   <input type="text" name="ssh_user" value="srvops" required />
                 </label>
+                <label class="field two-cols-span">
+                  <span>Web URL</span>
+                  <input type="url" name="web_url" placeholder="https://panel.example.local:2053/" />
+                </label>
               </div>
               <label class="field">
                 <span>Описание</span>
@@ -154,6 +158,7 @@
               </label>
               <div class="checkbox-row">
                 <label class="check-pill"><input type="checkbox" name="is_enabled" checked /> <span>Включён</span></label>
+                <label class="check-pill"><input type="checkbox" name="has_http_monitoring" /> <span>Проверять HTTP/HTTPS</span></label>
                 <label class="check-pill"><input type="checkbox" name="has_3xui" /> <span>Есть 3x-ui</span></label>
                 <label class="check-pill"><input type="checkbox" name="has_ssl_monitoring" /> <span>Проверять SSL</span></label>
               </div>
