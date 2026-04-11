@@ -577,3 +577,21 @@ textarea { resize: vertical; }
 :root[data-theme="dark"] .search-field {
   background: #0f1a2d;
 }
+
+.wrap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.status-line {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.small-text {
+  font-size: 12px;
+}

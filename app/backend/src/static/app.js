@@ -28,6 +28,9 @@ const endpoints = {
   statuses: '/api/status/servers',
   alerts: '/api/alerts',
   pingRun: '/api/probes/ping/run',
+  sshRun: '/api/probes/ssh/run',
+  httpRun: '/api/probes/http/run',
+  allRun: '/api/probes/connectivity/run',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -127,8 +130,8 @@ function renderSummary(summary) {
     ['Групп', summary.groups_total, 'groups'],
     ['Связей', summary.group_links_total, 'links'],
     ['Ping OK', summary.ping_ok_total, 'healthy'],
-    ['Ping FAIL', summary.ping_fail_total, 'issues'],
-    ['Ping unknown', summary.ping_unknown_total, 'unchecked'],
+    ['SSH OK', summary.ssh_ok_total, 'tcp'],
+    ['HTTP OK', summary.http_ok_total, 'web'],
     ['Активные alerts', summary.active_alerts_total, 'attention'],
   ];
 
@@ -141,10 +144,10 @@ function renderSummary(summary) {
   `).join('');
 
   quick.innerHTML = [
-    ['Включено серверов', summary.servers_enabled],
     ['Проблемы по ping', summary.ping_fail_total],
+    ['Проблемы по SSH', summary.ssh_fail_total],
+    ['Проблемы по HTTP', summary.http_fail_total],
     ['Активные alerts', summary.active_alerts_total],
-    ['Группы', summary.groups_total],
   ].map(([label, value]) => `
     <div class="micro-stat">
       <div class="label">${safe(label)}</div>
@@ -155,7 +158,7 @@ function renderSummary(summary) {
 
 function serverMatches(server, query) {
   if (!query) return true;
-  const text = [server.name, server.host, server.ssh_user, server.description, ...(server.groups || [])]
+  const text = [server.name, server.host, server.ssh_user, server.web_url, server.description, ...(server.groups || [])]
     .filter(Boolean).join(' ').toLowerCase();
   return text.includes(query);
 }
@@ -250,7 +253,10 @@ function renderServersTable(servers, statuses) {
         </td>
         <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
         <td>${groups}</td>
-        <td>${statusHtml(st.ping_ok)}</td>
+        <td>
+          <div class="status-line">${statusHtml(st.ping_ok)} ${statusHtml(st.ssh_ok)} ${statusHtml(st.http_ok)}</div>
+          <div class="muted small-text">web: ${safe(item.web_url)}</div>
+        </td>
         <td>${formatTs(st.last_check_at)}</td>
         <td>
           <div class="row-actions">
@@ -316,7 +322,7 @@ function renderStatuses(items) {
   if (!body) return;
   const filtered = (items || []).filter((item) => serverMatches(item, state.serverSearch));
   if (!filtered.length) {
-    body.innerHTML = '<tr><td colspan="10" class="empty-cell">Серверы не найдены. Добавьте их в inventory.</td></tr>';
+    body.innerHTML = '<tr><td colspan="12" class="empty-cell">Серверы не найдены. Добавьте их в inventory.</td></tr>';
     return;
   }
   body.innerHTML = filtered.map((item) => `
@@ -325,9 +331,15 @@ function renderStatuses(items) {
       <td><strong>${safe(item.name)}</strong></td>
       <td class="code-text">${safe(item.host)}</td>
       <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
-      <td>${(item.groups || []).length ? `<div class="inline-pills">${item.groups.map((g) => `<span class="pill pill-neutral">${safe(g)}</span>`).join('')}</div>` : '<span class="muted">—</span>'}</td>
+      <td class="code-text">${safe(item.web_url)}</td>
       <td>${statusHtml(item.ping_ok)}</td>
-      <td>${safe(item.ping_latency_ms)}</td>
+      <td>${statusHtml(item.ssh_ok)}</td>
+      <td>${statusHtml(item.http_ok)}${item.http_status_code ? `<div class="muted small-text">HTTP ${safe(item.http_status_code)}</div>` : ''}</td>
+      <td>
+        <div class="muted small-text">ping: ${safe(item.ping_latency_ms)} ms</div>
+        <div class="muted small-text">ssh: ${safe(item.ssh_latency_ms)} ms</div>
+        <div class="muted small-text">http: ${safe(item.http_response_ms)} ms</div>
+      </td>
       <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
       <td>${formatTs(item.last_check_at)}</td>
       <td>${safe(item.last_error)}</td>
@@ -395,8 +407,10 @@ function fillServerForm(server) {
   form.host.value = server.host || '';
   form.ssh_port.value = server.ssh_port || 22;
   form.ssh_user.value = server.ssh_user || 'srvops';
+  form.web_url.value = server.web_url || '';
   form.description.value = server.description || '';
   form.is_enabled.checked = !!server.is_enabled;
+  form.has_http_monitoring.checked = !!server.has_http_monitoring;
   form.has_3xui.checked = !!server.has_3xui;
   form.has_ssl_monitoring.checked = !!server.has_ssl_monitoring;
   setText('serverFormTitle', `Редактирование сервера #${server.id}`);
@@ -412,7 +426,9 @@ function resetServerForm() {
   form.server_id.value = '';
   form.ssh_port.value = 22;
   form.ssh_user.value = 'srvops';
+  form.web_url.value = '';
   form.is_enabled.checked = true;
+  form.has_http_monitoring.checked = false;
   setText('serverFormTitle', 'Новый сервер');
   setText('serverSubmitBtn', 'Добавить сервер');
   $('serverCancelBtn')?.classList.add('hidden');
@@ -449,8 +465,10 @@ async function handleServerSubmit(event) {
     host: form.host.value.trim(),
     ssh_port: Number(form.ssh_port.value || 22),
     ssh_user: form.ssh_user.value.trim() || 'srvops',
+    web_url: form.web_url.value.trim() || null,
     description: form.description.value.trim() || null,
     is_enabled: form.is_enabled.checked,
+    has_http_monitoring: form.has_http_monitoring.checked,
     has_3xui: form.has_3xui.checked,
     has_ssl_monitoring: form.has_ssl_monitoring.checked,
   };
@@ -521,6 +539,64 @@ async function runPingProbe() {
   }
 }
 
+
+async function runSshProbe() {
+  const buttons = ['sshBtnChecks', 'allChecksBtn'].map($).filter(Boolean);
+  buttons.forEach((btn) => { btn.disabled = true; });
+  try {
+    const result = await fetchJson(endpoints.sshRun, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tcp_timeout_seconds: 3, http_timeout_seconds: 5 }),
+    });
+    showMessage('success', `SSH probe завершён: processed=${result.processed}, ok=${result.ok}, failed=${result.failed}`);
+    await loadAll();
+    setTab('checks');
+  } catch (error) {
+    showMessage('error', `Не удалось запустить SSH probe: ${error.message}`);
+  } finally {
+    buttons.forEach((btn) => { btn.disabled = false; });
+  }
+}
+
+async function runHttpProbe() {
+  const buttons = ['httpBtnChecks', 'allChecksBtn'].map($).filter(Boolean);
+  buttons.forEach((btn) => { btn.disabled = true; });
+  try {
+    const result = await fetchJson(endpoints.httpRun, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tcp_timeout_seconds: 3, http_timeout_seconds: 5 }),
+    });
+    showMessage('success', `HTTP/HTTPS probe завершён: processed=${result.processed}, ok=${result.ok}, failed=${result.failed}, skipped=${result.skipped}`);
+    await loadAll();
+    setTab('checks');
+  } catch (error) {
+    showMessage('error', `Не удалось запустить HTTP/HTTPS probe: ${error.message}`);
+  } finally {
+    buttons.forEach((btn) => { btn.disabled = false; });
+  }
+}
+
+async function runAllChecks() {
+  const buttons = ['allChecksBtn', 'pingBtnChecks', 'sshBtnChecks', 'httpBtnChecks', 'pingBtn'].map($).filter(Boolean);
+  buttons.forEach((btn) => { btn.disabled = true; });
+  try {
+    const result = await fetchJson(endpoints.allRun, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tcp_timeout_seconds: 3, http_timeout_seconds: 5 }),
+    });
+    showMessage('success', `Все проверки завершены: ping=${result.ping.failed} fail, ssh=${result.ssh.failed} fail, http=${result.http.failed} fail`);
+    await loadAll();
+    setTab('checks');
+  } catch (error) {
+    showMessage('error', `Не удалось запустить все проверки: ${error.message}`);
+  } finally {
+    buttons.forEach((btn) => { btn.disabled = false; });
+  }
+}
+
 async function handleActionClick(event) {
   const btn = event.target.closest('button[data-action]');
   if (!btn) return;
@@ -577,8 +653,11 @@ function wire() {
   initThemeToggle();
   qa('.nav-link').forEach((node) => node.addEventListener('click', () => setTab(node.dataset.tab)));
   $('refreshBtn')?.addEventListener('click', () => loadAll().catch((e) => showMessage('error', e.message)));
-  $('pingBtn')?.addEventListener('click', runPingProbe);
+  $('pingBtn')?.addEventListener('click', runAllChecks);
   $('pingBtnChecks')?.addEventListener('click', runPingProbe);
+  $('sshBtnChecks')?.addEventListener('click', runSshProbe);
+  $('httpBtnChecks')?.addEventListener('click', runHttpProbe);
+  $('allChecksBtn')?.addEventListener('click', runAllChecks);
   $('serverForm')?.addEventListener('submit', handleServerSubmit);
   $('groupForm')?.addEventListener('submit', handleGroupSubmit);
   $('attachForm')?.addEventListener('submit', handleAttachSubmit);

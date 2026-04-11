@@ -46,16 +46,20 @@ def init_db() -> None:
                     host TEXT NOT NULL,
                     ssh_port INTEGER NOT NULL DEFAULT 22,
                     ssh_user TEXT NOT NULL DEFAULT 'srvops',
+                    web_url TEXT,
                     description TEXT,
                     is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
                     has_3xui BOOLEAN NOT NULL DEFAULT FALSE,
                     has_ssl_monitoring BOOLEAN NOT NULL DEFAULT FALSE,
+                    has_http_monitoring BOOLEAN NOT NULL DEFAULT FALSE,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
                 """
             )
             cur.execute("ALTER TABLE servers ALTER COLUMN ssh_user SET DEFAULT 'srvops';")
+            cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS web_url TEXT;")
+            cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS has_http_monitoring BOOLEAN NOT NULL DEFAULT FALSE;")
 
             cur.execute(
                 """
@@ -75,6 +79,10 @@ def init_db() -> None:
                     ping_ok BOOLEAN,
                     ping_latency_ms INTEGER,
                     ssh_ok BOOLEAN,
+                    ssh_latency_ms INTEGER,
+                    http_ok BOOLEAN,
+                    http_status_code INTEGER,
+                    http_response_ms INTEGER,
                     console_3xui_ok BOOLEAN,
                     subscription_3xui_ok BOOLEAN,
                     ssl_ok BOOLEAN,
@@ -87,6 +95,10 @@ def init_db() -> None:
                 """
             )
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS ping_latency_ms INTEGER;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS ssh_latency_ms INTEGER;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS http_ok BOOLEAN;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS http_status_code INTEGER;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS http_response_ms INTEGER;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS last_error TEXT;")
 
             cur.execute(
@@ -127,15 +139,21 @@ def list_servers() -> list[dict[str, Any]]:
                     s.host,
                     s.ssh_port,
                     s.ssh_user,
+                    s.web_url,
                     s.description,
                     s.is_enabled,
                     s.has_3xui,
                     s.has_ssl_monitoring,
+                    s.has_http_monitoring,
                     s.created_at,
                     s.updated_at,
                     st.ping_ok,
                     st.ping_latency_ms,
                     st.ssh_ok,
+                    st.ssh_latency_ms,
+                    st.http_ok,
+                    st.http_status_code,
+                    st.http_response_ms,
                     st.console_3xui_ok,
                     st.subscription_3xui_ok,
                     st.ssl_ok,
@@ -157,6 +175,10 @@ def list_servers() -> list[dict[str, Any]]:
                     st.ping_ok,
                     st.ping_latency_ms,
                     st.ssh_ok,
+                    st.ssh_latency_ms,
+                    st.http_ok,
+                    st.http_status_code,
+                    st.http_response_ms,
                     st.console_3xui_ok,
                     st.subscription_3xui_ok,
                     st.ssl_ok,
@@ -181,12 +203,18 @@ def list_server_status() -> list[dict[str, Any]]:
                     s.host,
                     s.ssh_port,
                     s.ssh_user,
+                    s.web_url,
                     s.is_enabled,
                     s.has_3xui,
                     s.has_ssl_monitoring,
+                    s.has_http_monitoring,
                     st.ping_ok,
                     st.ping_latency_ms,
                     st.ssh_ok,
+                    st.ssh_latency_ms,
+                    st.http_ok,
+                    st.http_status_code,
+                    st.http_response_ms,
                     st.console_3xui_ok,
                     st.subscription_3xui_ok,
                     st.ssl_ok,
@@ -213,6 +241,10 @@ def list_server_status() -> list[dict[str, Any]]:
                     st.ping_ok,
                     st.ping_latency_ms,
                     st.ssh_ok,
+                    st.ssh_latency_ms,
+                    st.http_ok,
+                    st.http_status_code,
+                    st.http_response_ms,
                     st.console_3xui_ok,
                     st.subscription_3xui_ok,
                     st.ssl_ok,
@@ -226,52 +258,26 @@ def list_server_status() -> list[dict[str, Any]]:
             return cur.fetchall()
 
 
-def create_server(
-    name: str,
-    host: str,
-    ssh_port: int,
-    ssh_user: str,
-    description: str | None,
-    is_enabled: bool,
-    has_3xui: bool,
-    has_ssl_monitoring: bool,
-):
+def create_server(name: str, host: str, ssh_port: int, ssh_user: str, web_url: str | None, description: str | None, is_enabled: bool, has_3xui: bool, has_ssl_monitoring: bool, has_http_monitoring: bool):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO servers
-                    (name, host, ssh_port, ssh_user, description, is_enabled, has_3xui, has_ssl_monitoring)
+                    (name, host, ssh_port, ssh_user, web_url, description, is_enabled, has_3xui, has_ssl_monitoring, has_http_monitoring)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *;
                 """,
-                (name, host, ssh_port, ssh_user, description, is_enabled, has_3xui, has_ssl_monitoring),
+                (name, host, ssh_port, ssh_user, web_url, description, is_enabled, has_3xui, has_ssl_monitoring, has_http_monitoring),
             )
             row = cur.fetchone()
-            cur.execute(
-                """
-                INSERT INTO server_status (server_id)
-                VALUES (%s)
-                ON CONFLICT (server_id) DO NOTHING;
-                """,
-                (row["id"],),
-            )
+            cur.execute("INSERT INTO server_status (server_id) VALUES (%s) ON CONFLICT (server_id) DO NOTHING;", (row["id"],))
         conn.commit()
         return row
 
 
-def update_server(
-    server_id: int,
-    name: str,
-    host: str,
-    ssh_port: int,
-    ssh_user: str,
-    description: str | None,
-    is_enabled: bool,
-    has_3xui: bool,
-    has_ssl_monitoring: bool,
-):
+def update_server(server_id: int, name: str, host: str, ssh_port: int, ssh_user: str, web_url: str | None, description: str | None, is_enabled: bool, has_3xui: bool, has_ssl_monitoring: bool, has_http_monitoring: bool):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -282,15 +288,17 @@ def update_server(
                     host = %s,
                     ssh_port = %s,
                     ssh_user = %s,
+                    web_url = %s,
                     description = %s,
                     is_enabled = %s,
                     has_3xui = %s,
                     has_ssl_monitoring = %s,
+                    has_http_monitoring = %s,
                     updated_at = NOW()
                 WHERE id = %s
                 RETURNING *;
                 """,
-                (name, host, ssh_port, ssh_user, description, is_enabled, has_3xui, has_ssl_monitoring, server_id),
+                (name, host, ssh_port, ssh_user, web_url, description, is_enabled, has_3xui, has_ssl_monitoring, has_http_monitoring, server_id),
             )
             row = cur.fetchone()
             if not row:
@@ -333,14 +341,7 @@ def list_groups() -> list[dict[str, Any]]:
 def create_group(name: str, description: str | None):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO server_groups (name, description)
-                VALUES (%s, %s)
-                RETURNING *;
-                """,
-                (name, description),
-            )
+            cur.execute("INSERT INTO server_groups (name, description) VALUES (%s, %s) RETURNING *;", (name, description))
             row = cur.fetchone()
         conn.commit()
         return row
@@ -349,15 +350,7 @@ def create_group(name: str, description: str | None):
 def update_group(group_id: int, name: str, description: str | None):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE server_groups
-                SET name = %s, description = %s
-                WHERE id = %s
-                RETURNING *;
-                """,
-                (name, description, group_id),
-            )
+            cur.execute("UPDATE server_groups SET name = %s, description = %s WHERE id = %s RETURNING *;", (name, description, group_id))
             row = cur.fetchone()
             if not row:
                 raise ValueError(f"Группа #{group_id} не найдена")
@@ -379,14 +372,7 @@ def delete_group(group_id: int):
 def attach_server_to_group(group_id: int, server_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO server_group_members (group_id, server_id)
-                VALUES (%s, %s)
-                ON CONFLICT (group_id, server_id) DO NOTHING;
-                """,
-                (group_id, server_id),
-            )
+            cur.execute("INSERT INTO server_group_members (group_id, server_id) VALUES (%s, %s) ON CONFLICT (group_id, server_id) DO NOTHING;", (group_id, server_id))
         conn.commit()
     return {"group_id": group_id, "server_id": server_id, "linked": True}
 
@@ -394,10 +380,7 @@ def attach_server_to_group(group_id: int, server_id: int):
 def detach_server_from_group(group_id: int, server_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM server_group_members WHERE group_id = %s AND server_id = %s RETURNING group_id, server_id;",
-                (group_id, server_id),
-            )
+            cur.execute("DELETE FROM server_group_members WHERE group_id = %s AND server_id = %s RETURNING group_id, server_id;", (group_id, server_id))
             row = cur.fetchone()
             if not row:
                 raise ValueError("Связь сервер↔группа не найдена")
@@ -431,7 +414,7 @@ def list_enabled_servers() -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, host, ssh_port, ssh_user, has_3xui, has_ssl_monitoring
+                SELECT id, name, host, ssh_port, ssh_user, web_url, has_3xui, has_ssl_monitoring, has_http_monitoring
                 FROM servers
                 WHERE is_enabled = TRUE
                 ORDER BY id;
@@ -440,34 +423,13 @@ def list_enabled_servers() -> list[dict[str, Any]]:
             return cur.fetchall()
 
 
-def update_ping_status(server_id: int, ping_ok: bool, ping_latency_ms: int | None, error: str | None):
+def update_ping_status(server_id: int, ping_ok: bool | None, ping_latency_ms: int | None, error: str | None):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO server_status (
-                    server_id,
-                    ping_ok,
-                    ping_latency_ms,
-                    last_error,
-                    last_check_at,
-                    updated_at,
-                    summary_json
-                )
-                VALUES (
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    NOW(),
-                    NOW(),
-                    jsonb_build_object(
-                        'ping_ok', %s,
-                        'ping_latency_ms', %s,
-                        'last_error', %s,
-                        'last_probe', 'ping'
-                    )
-                )
+                INSERT INTO server_status (server_id, ping_ok, ping_latency_ms, last_error, last_check_at, updated_at, summary_json)
+                VALUES (%s, %s, %s, %s, NOW(), NOW(), jsonb_build_object('ping_ok', %s, 'ping_latency_ms', %s, 'last_error', %s, 'last_probe', 'ping'))
                 ON CONFLICT (server_id)
                 DO UPDATE SET
                     ping_ok = EXCLUDED.ping_ok,
@@ -475,9 +437,52 @@ def update_ping_status(server_id: int, ping_ok: bool, ping_latency_ms: int | Non
                     last_error = EXCLUDED.last_error,
                     last_check_at = EXCLUDED.last_check_at,
                     updated_at = NOW(),
-                    summary_json = EXCLUDED.summary_json;
+                    summary_json = server_status.summary_json || EXCLUDED.summary_json;
                 """,
                 (server_id, ping_ok, ping_latency_ms, error, ping_ok, ping_latency_ms, error),
+            )
+        conn.commit()
+
+
+def update_ssh_status(server_id: int, ssh_ok: bool | None, ssh_latency_ms: int | None, error: str | None):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO server_status (server_id, ssh_ok, ssh_latency_ms, last_error, last_check_at, updated_at, summary_json)
+                VALUES (%s, %s, %s, %s, NOW(), NOW(), jsonb_build_object('ssh_ok', %s, 'ssh_latency_ms', %s, 'last_error', %s, 'last_probe', 'ssh'))
+                ON CONFLICT (server_id)
+                DO UPDATE SET
+                    ssh_ok = EXCLUDED.ssh_ok,
+                    ssh_latency_ms = EXCLUDED.ssh_latency_ms,
+                    last_error = EXCLUDED.last_error,
+                    last_check_at = EXCLUDED.last_check_at,
+                    updated_at = NOW(),
+                    summary_json = server_status.summary_json || EXCLUDED.summary_json;
+                """,
+                (server_id, ssh_ok, ssh_latency_ms, error, ssh_ok, ssh_latency_ms, error),
+            )
+        conn.commit()
+
+
+def update_http_status(server_id: int, http_ok: bool | None, http_status_code: int | None, http_response_ms: int | None, error: str | None):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO server_status (server_id, http_ok, http_status_code, http_response_ms, last_error, last_check_at, updated_at, summary_json)
+                VALUES (%s, %s, %s, %s, %s, NOW(), NOW(), jsonb_build_object('http_ok', %s, 'http_status_code', %s, 'http_response_ms', %s, 'last_error', %s, 'last_probe', 'http'))
+                ON CONFLICT (server_id)
+                DO UPDATE SET
+                    http_ok = EXCLUDED.http_ok,
+                    http_status_code = EXCLUDED.http_status_code,
+                    http_response_ms = EXCLUDED.http_response_ms,
+                    last_error = EXCLUDED.last_error,
+                    last_check_at = EXCLUDED.last_check_at,
+                    updated_at = NOW(),
+                    summary_json = server_status.summary_json || EXCLUDED.summary_json;
+                """,
+                (server_id, http_ok, http_status_code, http_response_ms, error, http_ok, http_status_code, http_response_ms, error),
             )
         conn.commit()
 
@@ -485,46 +490,15 @@ def update_ping_status(server_id: int, ping_ok: bool, ping_latency_ms: int | Non
 def set_alert_active(server_id: int, alert_type: str, severity: str, message: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT id
-                FROM alerts
-                WHERE server_id = %s AND alert_type = %s AND status = 'active'
-                ORDER BY id DESC
-                LIMIT 1;
-                """,
-                (server_id, alert_type),
-            )
+            cur.execute("SELECT id FROM alerts WHERE server_id = %s AND alert_type = %s AND status = 'active' ORDER BY id DESC LIMIT 1;", (server_id, alert_type))
             row = cur.fetchone()
             if row:
-                cur.execute(
-                    """
-                    UPDATE alerts
-                    SET
-                        severity = %s,
-                        message = %s,
-                        last_seen_at = NOW(),
-                        updated_at = NOW()
-                    WHERE id = %s
-                    RETURNING *;
-                    """,
-                    (severity, message, row["id"]),
-                )
+                cur.execute("UPDATE alerts SET severity = %s, message = %s, last_seen_at = NOW(), updated_at = NOW() WHERE id = %s RETURNING *;", (severity, message, row['id']))
                 result = cur.fetchone()
             else:
                 cur.execute(
                     """
-                    INSERT INTO alerts (
-                        server_id,
-                        alert_type,
-                        severity,
-                        status,
-                        message,
-                        first_seen_at,
-                        last_seen_at,
-                        created_at,
-                        updated_at
-                    )
+                    INSERT INTO alerts (server_id, alert_type, severity, status, message, first_seen_at, last_seen_at, created_at, updated_at)
                     VALUES (%s, %s, %s, 'active', %s, NOW(), NOW(), NOW(), NOW())
                     RETURNING *;
                     """,
@@ -539,16 +513,7 @@ def resolve_alert(server_id: int, alert_type: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """
-                UPDATE alerts
-                SET
-                    status = 'resolved',
-                    resolved_at = NOW(),
-                    last_seen_at = NOW(),
-                    updated_at = NOW()
-                WHERE server_id = %s AND alert_type = %s AND status = 'active'
-                RETURNING id;
-                """,
+                "UPDATE alerts SET status = 'resolved', resolved_at = NOW(), last_seen_at = NOW(), updated_at = NOW() WHERE server_id = %s AND alert_type = %s AND status = 'active' RETURNING id;",
                 (server_id, alert_type),
             )
             rows = cur.fetchall()
@@ -586,29 +551,21 @@ def list_active_alerts() -> list[dict[str, Any]]:
 def get_summary() -> dict[str, Any]:
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*)::INTEGER AS count FROM servers;")
-            servers_total = cur.fetchone()["count"]
-
-            cur.execute("SELECT COUNT(*)::INTEGER AS count FROM servers WHERE is_enabled = TRUE;")
-            servers_enabled = cur.fetchone()["count"]
-
-            cur.execute("SELECT COUNT(*)::INTEGER AS count FROM server_groups;")
-            groups_total = cur.fetchone()["count"]
-
-            cur.execute("SELECT COUNT(*)::INTEGER AS count FROM server_group_members;")
-            group_links_total = cur.fetchone()["count"]
-
-            cur.execute("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ping_ok IS TRUE;")
-            ping_ok_total = cur.fetchone()["count"]
-
-            cur.execute("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ping_ok IS FALSE;")
-            ping_fail_total = cur.fetchone()["count"]
-
-            cur.execute("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ping_ok IS NULL;")
-            ping_unknown_total = cur.fetchone()["count"]
-
-            cur.execute("SELECT COUNT(*)::INTEGER AS count FROM alerts WHERE status = 'active';")
-            active_alerts_total = cur.fetchone()["count"]
+            q = lambda sql: (cur.execute(sql), cur.fetchone()["count"])[1]
+            servers_total = q("SELECT COUNT(*)::INTEGER AS count FROM servers;")
+            servers_enabled = q("SELECT COUNT(*)::INTEGER AS count FROM servers WHERE is_enabled = TRUE;")
+            groups_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_groups;")
+            group_links_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_group_members;")
+            ping_ok_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ping_ok IS TRUE;")
+            ping_fail_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ping_ok IS FALSE;")
+            ping_unknown_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ping_ok IS NULL;")
+            ssh_ok_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ssh_ok IS TRUE;")
+            ssh_fail_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ssh_ok IS FALSE;")
+            ssh_unknown_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ssh_ok IS NULL;")
+            http_ok_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE http_ok IS TRUE;")
+            http_fail_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE http_ok IS FALSE;")
+            http_unknown_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE http_ok IS NULL;")
+            active_alerts_total = q("SELECT COUNT(*)::INTEGER AS count FROM alerts WHERE status = 'active';")
 
         return {
             "servers_total": servers_total,
@@ -618,5 +575,11 @@ def get_summary() -> dict[str, Any]:
             "ping_ok_total": ping_ok_total,
             "ping_fail_total": ping_fail_total,
             "ping_unknown_total": ping_unknown_total,
+            "ssh_ok_total": ssh_ok_total,
+            "ssh_fail_total": ssh_fail_total,
+            "ssh_unknown_total": ssh_unknown_total,
+            "http_ok_total": http_ok_total,
+            "http_fail_total": http_fail_total,
+            "http_unknown_total": http_unknown_total,
             "active_alerts_total": active_alerts_total,
         }

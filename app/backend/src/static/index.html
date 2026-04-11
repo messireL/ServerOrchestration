@@ -72,7 +72,7 @@
         <div class="header-actions">
           <button class="btn btn-ghost" type="button" id="themeToggleBtn" aria-label="Переключить тему">Тёмная тема</button>
           <button class="btn btn-secondary" id="refreshBtn">Обновить данные</button>
-          <button class="btn btn-primary" id="pingBtn">Запустить ping probe</button>
+          <button class="btn btn-primary" id="pingBtn">Проверить доступность</button>
         </div>
       </header>
 
@@ -301,9 +301,14 @@
             <div class="panel-header split-header">
               <div>
                 <h2>Проверки доступности</h2>
-                <p>Сейчас доступен ping probe. Дальше сюда добавим SSH, HTTP/HTTPS, 3x-ui и SSL.</p>
+                <p>Ping, доступность SSH-порта и web URL. Позже сюда добавим 3x-ui, подписки и SSL.</p>
               </div>
-              <button class="btn btn-primary" id="pingBtnChecks">Запустить ping probe</button>
+              <div class="row-actions wrap-actions">
+                <button class="btn btn-secondary" id="sshBtnChecks">Проверить SSH</button>
+                <button class="btn btn-secondary" id="httpBtnChecks">Проверить HTTP/HTTPS</button>
+                <button class="btn btn-primary" id="allChecksBtn">Запустить все проверки</button>
+                <button class="btn btn-ghost" id="pingBtnChecks">Только ping</button>
+              </div>
             </div>
             <div class="table-shell">
               <table class="data-table">
@@ -313,9 +318,11 @@
                     <th>Сервер</th>
                     <th>Host</th>
                     <th>SSH</th>
-                    <th>Группы</th>
+                    <th>URL</th>
                     <th>Ping</th>
-                    <th>Latency</th>
+                    <th>SSH</th>
+                    <th>HTTP</th>
+                    <th>Отклик</th>
                     <th>Alerts</th>
                     <th>Проверка</th>
                     <th>Ошибка</th>
@@ -367,10 +374,10 @@
               </div>
             </div>
             <div class="roadmap-list">
-              <div class="roadmap-item"><strong>v0.1.13</strong><span>SSH port checks, HTTP/HTTPS checks, более полезные статусы серверов.</span></div>
-              <div class="roadmap-item"><strong>v0.1.14</strong><span>Проверки 3x-ui console и subscription, browser-mode и разбор метаданных.</span></div>
-              <div class="roadmap-item"><strong>v0.1.15</strong><span>SSL checks, сроки действия сертификатов, alerts по истечению.</span></div>
-              <div class="roadmap-item"><strong>v0.1.16+</strong><span>Ansible execution layer для apt, timezone, reboot и operational-задач.</span></div>
+              <div class="roadmap-item"><strong>v0.1.15</strong><span>SSH и HTTP/HTTPS проверки доступности, полезные operational-статусы и alerts.</span></div>
+              <div class="roadmap-item"><strong>v0.1.16</strong><span>Проверки 3x-ui console и subscription, browser-mode и разбор метаданных.</span></div>
+              <div class="roadmap-item"><strong>v0.1.17</strong><span>SSL checks, сроки действия сертификатов, alerts по истечению.</span></div>
+              <div class="roadmap-item"><strong>v0.1.18+</strong><span>Ansible execution layer для apt, timezone, reboot и operational-задач.</span></div>
             </div>
           </section>
         </div>
