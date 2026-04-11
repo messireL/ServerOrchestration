@@ -542,3 +542,38 @@ textarea { resize: vertical; }
 :root[data-theme="dark"] .empty-cell {
   color: var(--muted);
 }
+
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  background: #0f1a2d;
+  color: #edf2ff;
+  border-color: #31425f;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: #7f8faa;
+}
+
+:root[data-theme="dark"] input:focus,
+:root[data-theme="dark"] textarea:focus,
+:root[data-theme="dark"] select:focus {
+  border-color: #6d97ff;
+  box-shadow: 0 0 0 4px rgba(109, 151, 255, 0.14);
+}
+
+:root[data-theme="dark"] .field span {
+  color: #b8c4da;
+}
+
+:root[data-theme="dark"] .check-pill {
+  background: #15233a;
+  border-color: #2f405c;
+}
+
+:root[data-theme="dark"] .search-field {
+  background: #0f1a2d;
+}
