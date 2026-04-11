@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-PING_LATENCY_RE = re.compile(r"time[=<](?P<latency>[0-9]+(?:\.[0-9]+)?)")
+PING_LATENCY_RE = re.compile(r"time\s*[=<]?\s*(?P<latency>[0-9]+(?:[.,][0-9]+)?)", re.IGNORECASE)
 BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -20,6 +20,7 @@ BROWSER_HEADERS = {
 
 def run_ping(host: str, timeout_seconds: int = 2) -> dict[str, Any]:
     cmd = ["ping", "-c", "1", "-W", str(timeout_seconds), host]
+    started = time.perf_counter()
     try:
         completed = subprocess.run(
             cmd,
@@ -33,14 +34,19 @@ def run_ping(host: str, timeout_seconds: int = 2) -> dict[str, Any]:
     except subprocess.TimeoutExpired:
         return {"ok": False, "latency_ms": None, "error": f"ping timeout after {timeout_seconds}s", "stdout": "", "stderr": "", "returncode": None}
 
+    elapsed_ms = int(round((time.perf_counter() - started) * 1000))
     stdout = completed.stdout or ""
     stderr = completed.stderr or ""
     latency_ms = None
-    match = PING_LATENCY_RE.search(stdout)
+    match = PING_LATENCY_RE.search(stdout) or PING_LATENCY_RE.search(stderr)
     if match:
-        latency_ms = int(round(float(match.group("latency"))))
+        latency_raw = match.group("latency").replace(",", ".")
+        latency_ms = int(round(float(latency_raw)))
 
     ok = completed.returncode == 0
+    if ok and latency_ms is None:
+        latency_ms = elapsed_ms
+
     error = None if ok else (stderr.strip() or stdout.strip() or f"ping failed with rc={completed.returncode}")
     return {"ok": ok, "latency_ms": latency_ms, "error": error, "stdout": stdout, "stderr": stderr, "returncode": completed.returncode}
 

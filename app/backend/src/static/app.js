@@ -52,6 +52,11 @@ function setText(id, value) {
   if (node) node.textContent = value ?? '—';
 }
 
+function formatLatency(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  return `${safe(value)} ms`;
+}
+
 function showMessage(type, text) {
   const stack = $('messageStack');
   if (!stack) return;
@@ -183,7 +188,7 @@ function renderDashboardServers(items) {
       <td><strong>${safe(item.name)}</strong></td>
       <td class="code-text">${safe(item.host)}</td>
       <td>${statusHtml(item.ping_ok)}</td>
-      <td>${safe(item.ping_latency_ms)}</td>
+      <td>${formatLatency(item.ping_latency_ms)}</td>
       <td>${Number(item.active_alerts || 0)}</td>
       <td>${formatTs(item.last_check_at)}</td>
     </tr>
@@ -336,9 +341,9 @@ function renderStatuses(items) {
       <td>${statusHtml(item.ssh_ok)}</td>
       <td>${statusHtml(item.http_ok)}${item.http_status_code ? `<div class="muted small-text">HTTP ${safe(item.http_status_code)}</div>` : ''}</td>
       <td>
-        <div class="muted small-text">ping: ${safe(item.ping_latency_ms)} ms</div>
-        <div class="muted small-text">ssh: ${safe(item.ssh_latency_ms)} ms</div>
-        <div class="muted small-text">http: ${safe(item.http_response_ms)} ms</div>
+        <div class="muted small-text">ping: ${formatLatency(item.ping_latency_ms)}</div>
+        <div class="muted small-text">ssh: ${formatLatency(item.ssh_latency_ms)}</div>
+        <div class="muted small-text">http: ${formatLatency(item.http_response_ms)}</div>
       </td>
       <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
       <td>${formatTs(item.last_check_at)}</td>

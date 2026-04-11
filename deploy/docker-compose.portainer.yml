@@ -17,7 +17,7 @@ services:
       retries: 10
 
   backend:
-    image: ghcr.io/messirel/serverorchestration-backend:0.1.17
+    image: ghcr.io/messirel/serverorchestration-backend:0.1.18
     container_name: server-orchestration-backend
     restart: unless-stopped
     depends_on:

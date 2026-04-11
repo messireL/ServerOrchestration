@@ -11,9 +11,9 @@
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.17`
+- Версия: `0.1.18`
 
-## Что входит в v0.1.17
+## Что входит в v0.1.18
 - backend API на FastAPI;
 - PostgreSQL;
 - inventory, `server_status` и `alerts`;
@@ -23,6 +23,9 @@
 - проверка HTTP/HTTPS по `web_url` с browser-like headers;
 - hotfix probe-слоя для старых БД: добавлена миграция `server_status.summary_json` и выровнены legacy-колонки `server_status`/`servers`;
 - ping / ssh / http probe-endpoints больше не должны валиться `Internal Server Error` из-за ошибки записи статуса;
+- усилен парсинг latency/time из системной утилиты `ping`;
+- если latency не распознана по stdout/stderr, для успешного ping используется measured elapsed time;
+- ping latency явно показывается в таблицах Dashboard и Проверки как `N ms`;
 - alerts по `ping_down`, `ssh_down`, `http_down`;
 - web UI с левым меню, светлой и тёмной темой;
 - Portainer stack из Git-репозитория;
