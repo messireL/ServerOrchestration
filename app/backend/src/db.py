@@ -59,6 +59,8 @@ def init_db() -> None:
             )
             cur.execute("ALTER TABLE servers ALTER COLUMN ssh_user SET DEFAULT 'srvops';")
             cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS web_url TEXT;")
+            cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS has_3xui BOOLEAN NOT NULL DEFAULT FALSE;")
+            cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS has_ssl_monitoring BOOLEAN NOT NULL DEFAULT FALSE;")
             cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS has_http_monitoring BOOLEAN NOT NULL DEFAULT FALSE;")
 
             cur.execute(
@@ -95,11 +97,19 @@ def init_db() -> None:
                 """
             )
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS ping_latency_ms INTEGER;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS ssh_ok BOOLEAN;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS ssh_latency_ms INTEGER;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS http_ok BOOLEAN;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS http_status_code INTEGER;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS http_response_ms INTEGER;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS console_3xui_ok BOOLEAN;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS subscription_3xui_ok BOOLEAN;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS ssl_ok BOOLEAN;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS reboot_required BOOLEAN;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS last_error TEXT;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS last_check_at TIMESTAMPTZ;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS summary_json JSONB NOT NULL DEFAULT '{}'::jsonb;")
 
             cur.execute(
                 """

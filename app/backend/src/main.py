@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+import logging
 import os
 from typing import Optional
 
@@ -37,10 +38,181 @@ from src.probes import run_http_check, run_ping, run_tcp_connect
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.15")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.17")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+logger = logging.getLogger(__name__)
+
+
+def _normalize_probe_error(error: object) -> str | None:
+    if error is None:
+        return None
+    text = str(error).strip()
+    if not text:
+        return None
+    return text[:500]
+
+
+def _run_ping_probe_for_server(server: dict, timeout_seconds: int) -> dict:
+    probe = run_ping(server["host"], timeout_seconds=timeout_seconds)
+    persistence_error = None
+
+    try:
+        update_ping_status(
+            server_id=server["id"],
+            ping_ok=probe["ok"],
+            ping_latency_ms=probe["latency_ms"],
+            error=_normalize_probe_error(probe["error"]),
+        )
+
+        if probe["ok"]:
+            resolve_alert(server_id=server["id"], alert_type="ping_down")
+        else:
+            set_alert_active(
+                server_id=server["id"],
+                alert_type="ping_down",
+                severity="critical",
+                message=f"Ping недоступен: {_normalize_probe_error(probe['error']) or 'host unreachable'}",
+            )
+    except Exception as exc:
+        logger.exception("Ping probe persistence failed for server_id=%s host=%s", server.get("id"), server.get("host"))
+        persistence_error = _normalize_probe_error(exc)
+
+    result_ok = bool(probe["ok"]) and persistence_error is None
+    result_error = _normalize_probe_error(probe["error"])
+    if persistence_error:
+        result_error = f"db persistence failed: {persistence_error}"
+
+    return {
+        "server_id": server["id"],
+        "name": server["name"],
+        "host": server["host"],
+        "ok": result_ok,
+        "probe_ok": bool(probe["ok"]),
+        "latency_ms": probe["latency_ms"],
+        "error": result_error,
+        "persistence_error": persistence_error,
+    }
+
+
+def _run_ssh_probe_for_server(server: dict, timeout_seconds: int) -> dict:
+    probe = run_tcp_connect(server["host"], server["ssh_port"], timeout_seconds=timeout_seconds)
+    persistence_error = None
+
+    try:
+        update_ssh_status(
+            server_id=server["id"],
+            ssh_ok=probe["ok"],
+            ssh_latency_ms=probe["latency_ms"],
+            error=_normalize_probe_error(probe["error"]),
+        )
+        if probe["ok"]:
+            resolve_alert(server_id=server["id"], alert_type="ssh_down")
+        else:
+            set_alert_active(
+                server_id=server["id"],
+                alert_type="ssh_down",
+                severity="critical",
+                message=f"SSH порт недоступен: {_normalize_probe_error(probe['error']) or 'tcp connect failed'}",
+            )
+    except Exception as exc:
+        logger.exception("SSH probe persistence failed for server_id=%s host=%s", server.get("id"), server.get("host"))
+        persistence_error = _normalize_probe_error(exc)
+
+    result_ok = bool(probe["ok"]) and persistence_error is None
+    result_error = _normalize_probe_error(probe["error"])
+    if persistence_error:
+        result_error = f"db persistence failed: {persistence_error}"
+
+    return {
+        "server_id": server["id"],
+        "name": server["name"],
+        "host": server["host"],
+        "port": server["ssh_port"],
+        "ok": result_ok,
+        "probe_ok": bool(probe["ok"]),
+        "latency_ms": probe["latency_ms"],
+        "error": result_error,
+        "persistence_error": persistence_error,
+    }
+
+
+def _run_http_probe_for_server(server: dict, timeout_seconds: int) -> dict:
+    if not server.get("has_http_monitoring"):
+        try:
+            update_http_status(server_id=server["id"], http_ok=None, http_status_code=None, http_response_ms=None, error=None)
+        except Exception as exc:
+            logger.exception("HTTP probe status reset failed for server_id=%s host=%s", server.get("id"), server.get("host"))
+            return {
+                "server_id": server["id"],
+                "name": server["name"],
+                "url": server.get("web_url"),
+                "ok": False,
+                "probe_ok": None,
+                "status_code": None,
+                "response_ms": None,
+                "error": f"db persistence failed: {_normalize_probe_error(exc)}",
+                "skipped": False,
+                "persistence_error": _normalize_probe_error(exc),
+            }
+
+        return {
+            "server_id": server["id"],
+            "name": server["name"],
+            "url": server.get("web_url"),
+            "ok": None,
+            "probe_ok": None,
+            "status_code": None,
+            "response_ms": None,
+            "error": "http monitoring disabled",
+            "skipped": True,
+            "persistence_error": None,
+        }
+
+    probe = run_http_check(server.get("web_url") or "", timeout_seconds=timeout_seconds)
+    persistence_error = None
+
+    try:
+        update_http_status(
+            server_id=server["id"],
+            http_ok=probe["ok"],
+            http_status_code=probe["status_code"],
+            http_response_ms=probe["response_ms"],
+            error=_normalize_probe_error(probe["error"]),
+        )
+        if probe["ok"] is True:
+            resolve_alert(server_id=server["id"], alert_type="http_down")
+        elif probe["ok"] is False:
+            set_alert_active(
+                server_id=server["id"],
+                alert_type="http_down",
+                severity="warning",
+                message=f"HTTP/HTTPS недоступен: {_normalize_probe_error(probe['error']) or 'request failed'}",
+            )
+    except Exception as exc:
+        logger.exception("HTTP probe persistence failed for server_id=%s host=%s", server.get("id"), server.get("host"))
+        persistence_error = _normalize_probe_error(exc)
+
+    result_ok = probe["ok"] if persistence_error is None else False
+    result_error = _normalize_probe_error(probe["error"])
+    if persistence_error:
+        result_error = f"db persistence failed: {persistence_error}"
+
+    return {
+        "server_id": server["id"],
+        "name": server["name"],
+        "url": server.get("web_url"),
+        "ok": result_ok,
+        "probe_ok": probe["ok"],
+        "status_code": probe["status_code"],
+        "response_ms": probe["response_ms"],
+        "error": result_error,
+        "skipped": probe["ok"] is None and persistence_error is None,
+        "persistence_error": persistence_error,
+    }
 
 
 @asynccontextmanager
@@ -238,17 +410,26 @@ def api_run_ping_probe(payload: PingProbeRequest):
     fail_count = 0
 
     for server in servers:
-        probe = run_ping(server["host"], timeout_seconds=payload.timeout_seconds)
-        update_ping_status(server_id=server["id"], ping_ok=probe["ok"], ping_latency_ms=probe["latency_ms"], error=probe["error"])
+        try:
+            result = _run_ping_probe_for_server(server, payload.timeout_seconds)
+        except Exception as exc:
+            logger.exception("Ping probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
+            result = {
+                "server_id": server["id"],
+                "name": server["name"],
+                "host": server["host"],
+                "ok": False,
+                "probe_ok": False,
+                "latency_ms": None,
+                "error": f"unexpected ping probe error: {_normalize_probe_error(exc)}",
+                "persistence_error": None,
+            }
 
-        if probe["ok"]:
+        if result["ok"]:
             ok_count += 1
-            resolve_alert(server_id=server["id"], alert_type="ping_down")
         else:
             fail_count += 1
-            set_alert_active(server_id=server["id"], alert_type="ping_down", severity="critical", message=f"Ping недоступен: {probe['error'] or 'host unreachable'}")
-
-        results.append({"server_id": server["id"], "name": server["name"], "host": server["host"], "ok": probe["ok"], "latency_ms": probe["latency_ms"], "error": probe["error"]})
+        results.append(result)
 
     return {"processed": len(servers), "ok": ok_count, "failed": fail_count, "results": results}
 
@@ -261,15 +442,27 @@ def api_run_ssh_probe(payload: ConnectivityProbeRequest):
     fail_count = 0
 
     for server in servers:
-        probe = run_tcp_connect(server["host"], server["ssh_port"], timeout_seconds=payload.tcp_timeout_seconds)
-        update_ssh_status(server_id=server["id"], ssh_ok=probe["ok"], ssh_latency_ms=probe["latency_ms"], error=probe["error"])
-        if probe["ok"]:
+        try:
+            result = _run_ssh_probe_for_server(server, payload.tcp_timeout_seconds)
+        except Exception as exc:
+            logger.exception("SSH probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
+            result = {
+                "server_id": server["id"],
+                "name": server["name"],
+                "host": server["host"],
+                "port": server["ssh_port"],
+                "ok": False,
+                "probe_ok": False,
+                "latency_ms": None,
+                "error": f"unexpected ssh probe error: {_normalize_probe_error(exc)}",
+                "persistence_error": None,
+            }
+
+        if result["ok"]:
             ok_count += 1
-            resolve_alert(server_id=server["id"], alert_type="ssh_down")
         else:
             fail_count += 1
-            set_alert_active(server_id=server["id"], alert_type="ssh_down", severity="critical", message=f"SSH порт недоступен: {probe['error'] or 'tcp connect failed'}")
-        results.append({"server_id": server["id"], "name": server["name"], "host": server["host"], "port": server["ssh_port"], "ok": probe["ok"], "latency_ms": probe["latency_ms"], "error": probe["error"]})
+        results.append(result)
 
     return {"processed": len(servers), "ok": ok_count, "failed": fail_count, "results": results}
 
@@ -283,24 +476,30 @@ def api_run_http_probe(payload: ConnectivityProbeRequest):
     skipped_count = 0
 
     for server in servers:
-        if not server.get("has_http_monitoring"):
-            update_http_status(server_id=server["id"], http_ok=None, http_status_code=None, http_response_ms=None, error=None)
-            results.append({"server_id": server["id"], "name": server["name"], "url": server.get("web_url"), "ok": None, "status_code": None, "response_ms": None, "error": "http monitoring disabled", "skipped": True})
-            skipped_count += 1
-            continue
+        try:
+            result = _run_http_probe_for_server(server, payload.http_timeout_seconds)
+        except Exception as exc:
+            logger.exception("HTTP probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
+            result = {
+                "server_id": server["id"],
+                "name": server["name"],
+                "url": server.get("web_url"),
+                "ok": False,
+                "probe_ok": False,
+                "status_code": None,
+                "response_ms": None,
+                "error": f"unexpected http probe error: {_normalize_probe_error(exc)}",
+                "skipped": False,
+                "persistence_error": None,
+            }
 
-        probe = run_http_check(server.get("web_url") or "", timeout_seconds=payload.http_timeout_seconds)
-        update_http_status(server_id=server["id"], http_ok=probe["ok"], http_status_code=probe["status_code"], http_response_ms=probe["response_ms"], error=probe["error"])
-        if probe["ok"] is True:
+        if result.get("skipped"):
+            skipped_count += 1
+        elif result["ok"]:
             ok_count += 1
-            resolve_alert(server_id=server["id"], alert_type="http_down")
-        elif probe["ok"] is False:
-            fail_count += 1
-            set_alert_active(server_id=server["id"], alert_type="http_down", severity="warning", message=f"HTTP/HTTPS недоступен: {probe['error'] or 'request failed'}")
         else:
-            skipped_count += 1
-
-        results.append({"server_id": server["id"], "name": server["name"], "url": server.get("web_url"), "ok": probe["ok"], "status_code": probe["status_code"], "response_ms": probe["response_ms"], "error": probe["error"], "skipped": probe["ok"] is None})
+            fail_count += 1
+        results.append(result)
 
     return {"processed": len(servers), "ok": ok_count, "failed": fail_count, "skipped": skipped_count, "results": results}
 

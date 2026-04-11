@@ -22,19 +22,18 @@
 - связи сервер ↔ группа должны быть обозримыми и управляемыми через GUI;
 - интерфейс должен поддерживать светлую и тёмную тему.
 
-## Актуализировано для v0.1.16
+## Актуализировано для v0.1.17
 - сервер inventory поддерживает поля `host`, `ssh_port`, `ssh_user`, `web_url` и флаги мониторинга;
 - `web_url` используется для проверки HTTP/HTTPS доступности;
 - HTTP/HTTPS probe работает в browser-like режиме и не равен будущей проверке 3x-ui subscription;
 - должны поддерживаться проверки: ping, SSH-порт, HTTP/HTTPS, затем 3x-ui, SSL, timezone, apt, reboot, журналы;
-- alerts по недоступности должны создаваться отдельно по типам `ping_down`, `ssh_down`, `http_down`.
+- alerts по недоступности должны создаваться отдельно по типам `ping_down`, `ssh_down`, `http_down`;
+- probe-слой не должен ронять весь API endpoint 500-кой, если проблема возникла в записи результата в БД.
 
 ## Ближайшие функциональные блоки
-- 3x-ui console checks;
-- 3x-ui subscription checks с browser-mode, base64 и метаданными;
-- SSL checks;
-- timezone checks;
-- apt update/upgrade/dist-upgrade через Ansible;
-- reboot и maintenance windows;
-- UFW/SSH logs;
-- уведомления email и Telegram.
+- `0.1.18` — переработка интерфейса: левое меню, отдельные разделы, менее перегруженный dashboard;
+- `0.1.19` — inventory polish: фильтры, бейджи проверок, `last_check`/`last_error`;
+- `0.1.20` — scheduler и история проверок;
+- `0.1.21` — 3x-ui console/subscription checks;
+- `0.1.22` — SSL checks;
+- затем timezone checks, apt update/upgrade/dist-upgrade через Ansible, reboot, maintenance windows, UFW/SSH logs и уведомления email/Telegram.

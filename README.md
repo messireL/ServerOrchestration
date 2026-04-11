@@ -11,9 +11,9 @@
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.16`
+- Версия: `0.1.17`
 
-## Что входит в v0.1.16
+## Что входит в v0.1.17
 - backend API на FastAPI;
 - PostgreSQL;
 - inventory, `server_status` и `alerts`;
@@ -21,7 +21,8 @@
 - ping probe;
 - проверка доступности SSH-порта;
 - проверка HTTP/HTTPS по `web_url` с browser-like headers;
-- hotfix по inventory-форме: поле `Web URL`, чекбокс `Проверять HTTP/HTTPS` и рабочая кнопка `Добавить сервер`;
+- hotfix probe-слоя для старых БД: добавлена миграция `server_status.summary_json` и выровнены legacy-колонки `server_status`/`servers`;
+- ping / ssh / http probe-endpoints больше не должны валиться `Internal Server Error` из-за ошибки записи статуса;
 - alerts по `ping_down`, `ssh_down`, `http_down`;
 - web UI с левым меню, светлой и тёмной темой;
 - Portainer stack из Git-репозитория;
