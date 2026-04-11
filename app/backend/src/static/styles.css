@@ -256,6 +256,7 @@ button { cursor: pointer; }
   background: var(--surface);
 }
 .flash-success { background: var(--success-soft); border-color: #c8ecd8; color: #146146; }
+.flash-warning { background: var(--warning-soft); border-color: #f0d78d; color: #9b6800; }
 .flash-error { background: var(--danger-soft); border-color: #f1c7c7; color: #8f2d2d; }
 .flash-info { background: var(--primary-soft); border-color: #d4defd; color: #2344aa; }
 

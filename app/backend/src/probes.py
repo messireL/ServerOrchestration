@@ -1,4 +1,5 @@
 import re
+import shutil
 import socket
 import ssl
 import subprocess
@@ -18,8 +19,41 @@ BROWSER_HEADERS = {
 }
 
 
+def _squash_probe_text(*parts: str, limit: int = 500) -> str:
+    combined = " | ".join(part.strip() for part in parts if part and part.strip())
+    combined = re.sub(r"\s+", " ", combined).strip()
+    if len(combined) <= limit:
+        return combined
+    return combined[: limit - 1] + "…"
+
+
+def _normalize_ping_error(stdout: str, stderr: str, returncode: int | None) -> str:
+    raw = _squash_probe_text(stderr, stdout)
+    if not raw:
+        raw = f"ping failed with rc={returncode}"
+
+    lowered = raw.lower()
+    if "operation not permitted" in lowered or "permission denied" in lowered:
+        return f"{raw} (контейнеру нужен NET_RAW для ICMP ping)"
+    if "not found" in lowered or "no such file" in lowered:
+        return f"{raw} (в контейнере отсутствует системный ping)"
+    return raw
+
+
 def run_ping(host: str, timeout_seconds: int = 2) -> dict[str, Any]:
-    cmd = ["ping", "-c", "1", "-W", str(timeout_seconds), host]
+    ping_path = shutil.which("ping")
+    if not ping_path:
+        return {
+            "ok": False,
+            "latency_ms": None,
+            "error": "ping binary not found in container",
+            "stdout": "",
+            "stderr": "",
+            "returncode": None,
+            "command": None,
+        }
+
+    cmd = [ping_path, "-c", "1", "-W", str(timeout_seconds), host]
     started = time.perf_counter()
     try:
         completed = subprocess.run(
@@ -30,9 +64,25 @@ def run_ping(host: str, timeout_seconds: int = 2) -> dict[str, Any]:
             check=False,
         )
     except FileNotFoundError:
-        return {"ok": False, "latency_ms": None, "error": "ping binary not found in container", "stdout": "", "stderr": "", "returncode": None}
+        return {
+            "ok": False,
+            "latency_ms": None,
+            "error": "ping binary not found in container",
+            "stdout": "",
+            "stderr": "",
+            "returncode": None,
+            "command": " ".join(cmd),
+        }
     except subprocess.TimeoutExpired:
-        return {"ok": False, "latency_ms": None, "error": f"ping timeout after {timeout_seconds}s", "stdout": "", "stderr": "", "returncode": None}
+        return {
+            "ok": False,
+            "latency_ms": None,
+            "error": f"ping timeout after {timeout_seconds}s",
+            "stdout": "",
+            "stderr": "",
+            "returncode": None,
+            "command": " ".join(cmd),
+        }
 
     elapsed_ms = int(round((time.perf_counter() - started) * 1000))
     stdout = completed.stdout or ""
@@ -47,8 +97,35 @@ def run_ping(host: str, timeout_seconds: int = 2) -> dict[str, Any]:
     if ok and latency_ms is None:
         latency_ms = elapsed_ms
 
-    error = None if ok else (stderr.strip() or stdout.strip() or f"ping failed with rc={completed.returncode}")
-    return {"ok": ok, "latency_ms": latency_ms, "error": error, "stdout": stdout, "stderr": stderr, "returncode": completed.returncode}
+    error = None if ok else _normalize_ping_error(stdout, stderr, completed.returncode)
+    return {
+        "ok": ok,
+        "latency_ms": latency_ms,
+        "error": error,
+        "stdout": stdout,
+        "stderr": stderr,
+        "returncode": completed.returncode,
+        "command": " ".join(cmd),
+    }
+
+
+def get_ping_diagnostics(timeout_seconds: int = 1) -> dict[str, Any]:
+    ping_path = shutil.which("ping")
+    diagnostics: dict[str, Any] = {
+        "binary_found": bool(ping_path),
+        "binary_path": ping_path,
+        "capability_hint": "Для non-root ICMP ping контейнеру нужен cap_add: NET_RAW; в image дополнительно выставляется setcap для ping.",
+    }
+    if not ping_path:
+        diagnostics["self_test"] = {
+            "ok": False,
+            "latency_ms": None,
+            "error": "ping binary not found in container",
+        }
+        return diagnostics
+
+    diagnostics["self_test"] = run_ping("127.0.0.1", timeout_seconds=timeout_seconds)
+    return diagnostics
 
 
 def run_tcp_connect(host: str, port: int, timeout_seconds: int = 3) -> dict[str, Any]:

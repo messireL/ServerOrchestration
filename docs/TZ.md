@@ -22,20 +22,22 @@
 - связи сервер ↔ группа должны быть обозримыми и управляемыми через GUI;
 - интерфейс должен поддерживать светлую и тёмную тему.
 
-## Актуализировано для v0.1.18
+## Актуализировано для v0.1.19
 - сервер inventory поддерживает поля `host`, `ssh_port`, `ssh_user`, `web_url` и флаги мониторинга;
 - `web_url` используется для проверки HTTP/HTTPS доступности;
 - HTTP/HTTPS probe работает в browser-like режиме и не равен будущей проверке 3x-ui subscription;
 - должны поддерживаться проверки: ping, SSH-порт, HTTP/HTTPS, затем 3x-ui, SSL, timezone, apt, reboot, журналы;
 - alerts по недоступности должны создаваться отдельно по типам `ping_down`, `ssh_down`, `http_down`;
 - probe-слой не должен ронять весь API endpoint 500-кой, если проблема возникла в записи результата в БД;
-- успешный ping должен сохранять и показывать latency/time в таблицах даже при отличающемся формате вывода системной утилиты `ping`.
+- успешный ping должен сохранять и показывать latency/time в таблицах;
+- для non-root контейнера ICMP ping должен быть обеспечен через `setcap` на бинарнике и `NET_RAW` в runtime-конфигурации;
+- UI при failed ping обязан показывать явную причину, а не только общий счётчик ошибок.
 
 ## Ближайшие функциональные блоки
-- `0.1.18` — hotfix latency/time в ping-таблицах;
-- `0.1.19` — переработка интерфейса: левое меню, отдельные разделы, менее перегруженный dashboard;
-- `0.1.20` — inventory polish: фильтры, бейджи проверок, `last_check`/`last_error`;
-- `0.1.21` — scheduler и история проверок;
-- `0.1.22` — 3x-ui console/subscription checks;
-- `0.1.23` — SSL checks;
+- `0.1.19` — hotfix реального ICMP ping в non-root контейнере и ping diagnostics;
+- `0.1.20` — переработка интерфейса: левое меню, отдельные разделы, менее перегруженный dashboard;
+- `0.1.21` — inventory polish: фильтры, бейджи проверок, `last_check`/`last_error`;
+- `0.1.22` — scheduler и история проверок;
+- `0.1.23` — 3x-ui console/subscription checks;
+- `0.1.24` — SSL checks;
 - затем timezone checks, apt update/upgrade/dist-upgrade через Ansible, reboot, maintenance windows, UFW/SSH logs и уведомления email/Telegram.

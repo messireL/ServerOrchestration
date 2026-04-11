@@ -17,7 +17,7 @@
 - в релизе обязательно описывается, какой compose-файл использовать;
 - описываются шаги проверки контейнеров, health endpoint и логов.
 
-## Дополнение v0.1.18
+## Дополнение v0.1.19
 - Для релизов probe-слоя обязательно обновляются `README.md`, `docs/TZ.md`, `docs/ARCHITECTURE.md`, `docs/TRANSFER_TO_NEW_CHAT.md` и `docs/releases/<version>/*`.
 - Если меняется inventory-модель, нужно отдельно проверить создание, редактирование и сохранение новых полей через UI.
 - Для release по доступности обязательно проверять `/health`, `/version`, `/api/summary`, `/api/status/servers`, `/api/alerts` и профильные probe-endpoints.
@@ -27,3 +27,4 @@
   - URL отвечает 200/302/401/403;
   - URL недоступен;
   - включён/выключен флаг `has_http_monitoring`.
+- Для ping-релизов в non-root контейнере обязательно проверять `/api/probes/ping/diagnostics`, включая `binary_found` и `self_test.ok`, иначе легко снова починить таблицу и не починить сам ICMP.

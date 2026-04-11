@@ -28,6 +28,7 @@ const endpoints = {
   statuses: '/api/status/servers',
   alerts: '/api/alerts',
   pingRun: '/api/probes/ping/run',
+  pingDiagnostics: '/api/probes/ping/diagnostics',
   sshRun: '/api/probes/ssh/run',
   httpRun: '/api/probes/http/run',
   allRun: '/api/probes/connectivity/run',
@@ -534,7 +535,25 @@ async function runPingProbe() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ timeout_seconds: 2 }),
     });
-    showMessage('success', `Ping probe завершён: processed=${result.processed}, ok=${result.ok}, failed=${result.failed}`);
+
+    if (Number(result.failed || 0) > 0) {
+      const firstFailed = Array.isArray(result.results) ? result.results.find((item) => !item.ok) : null;
+      let details = firstFailed?.error || firstFailed?.persistence_error || 'подробности не получены';
+      try {
+        const diag = await fetchJson(endpoints.pingDiagnostics);
+        if (diag?.self_test?.ok === false && diag?.self_test?.error) {
+          details += `; self-test: ${diag.self_test.error}`;
+        } else if (diag?.binary_found === false) {
+          details += '; ping binary не найден в контейнере';
+        }
+      } catch (diagError) {
+        details += `; diagnostics: ${diagError.message}`;
+      }
+      showMessage('warning', `Ping probe завершён с ошибками: processed=${result.processed}, ok=${result.ok}, failed=${result.failed}. Первая ошибка: ${details}`);
+    } else {
+      showMessage('success', `Ping probe завершён: processed=${result.processed}, ok=${result.ok}, failed=${result.failed}`);
+    }
+
     await loadAll();
     setTab('checks');
   } catch (error) {

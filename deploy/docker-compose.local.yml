@@ -22,10 +22,12 @@ services:
     build:
       context: ../app/backend
       args:
-        APP_VERSION: 0.1.18
-    image: server-orchestration-backend-local:0.1.18
+        APP_VERSION: 0.1.19
+    image: server-orchestration-backend-local:0.1.19
     container_name: server-orchestration-backend
     restart: unless-stopped
+    cap_add:
+      - NET_RAW
     env_file:
       - stack.env
     depends_on:
