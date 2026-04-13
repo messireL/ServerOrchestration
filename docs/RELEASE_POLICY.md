@@ -17,9 +17,12 @@
 - в релизе обязательно описывается, какой compose-файл использовать;
 - описываются шаги проверки контейнеров, health endpoint и логов.
 
-## Дополнение v0.1.22
-- Для релизов probe-слоя обязательно обновляются `README.md`, `docs/TZ.md`, `docs/ARCHITECTURE.md`, `docs/TRANSFER_TO_NEW_CHAT.md` и `docs/releases/<version>/*`.
-- Если меняется inventory-экран или layout панели, в релизе нужно отдельно описывать, что именно визуально изменилось и что проверить в UI после выкладки.
-- Для release по доступности обязательно проверять `/health`, `/version`, `/api/summary`, `/api/status/servers`, `/api/alerts` и профильные probe-endpoints.
-- Если bugfix затрагивает schema-sync или probe persistence, релиз обязан отдельно проверять сценарий старой БД без ручных SQL-правок.
-- Для UI-полировок обязательно проверять сценарии поиска, фильтров, редактирования сервера и отображения `last_error`/`last_check`.
+## Дополнение v0.1.24
+- Для функциональных релизов мониторинга обязательно обновляются `README.md`, `docs/TZ.md`, `docs/ARCHITECTURE.md`, `docs/TRANSFER_TO_NEW_CHAT.md` и `docs/releases/<version>/*`.
+- Если меняется scheduler или история прогонов, релиз обязан проверять сценарий старой БД без ручных SQL-правок.
+- Для release мониторинга обязательно проверять `/health`, `/version`, `/api/summary`, `/api/status/servers`, `/api/monitor/settings`, `/api/probes/history` и профильные probe-endpoints.
+- Если релиз включает background scheduler, нужно отдельно проверять, что после старта backend появляются автоматические записи history без ручного запуска из UI.
+- Для Portainer workflow нельзя создавать новый stack на каждый релиз; обновляется существующий stack, а старые stopped-контейнеры и dangling images периодически чистятся отдельно.
+
+- Если релиз меняет alerting, нужно отдельно проверять `/api/alerts`, `/api/alerts/settings`, `/api/alerts/deliveries` и `/api/alerts/test`.
+- Для notification-каналов секреты не кладутся в UI или git: они задаются через Portainer env.

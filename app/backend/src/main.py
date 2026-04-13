@@ -1,11 +1,18 @@
+import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from pathlib import Path
 import logging
 import os
+import smtplib
+import ssl
+import threading
+import urllib.parse
+import urllib.request
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -17,19 +24,31 @@ from src.db import (
     delete_group,
     delete_server,
     detach_server_from_group,
+    get_alert_settings,
+    get_monitor_settings,
     get_summary,
     init_db,
+    insert_alert_delivery_log,
+    insert_probe_history,
     list_active_alerts,
+    list_alert_delivery_log,
+    list_alerts_for_reminder,
     list_enabled_servers,
     list_group_links,
     list_groups,
+    list_probe_history,
     list_server_status,
     list_servers,
+    list_servers_requiring_stale_alert,
+    mark_alert_delivery_attempt,
+    mark_scheduler_probe_run,
     ping_db,
     resolve_alert,
     set_alert_active,
+    update_alert_settings,
     update_group,
     update_http_status,
+    update_monitor_settings,
     update_ping_status,
     update_server,
     update_ssh_status,
@@ -38,13 +57,14 @@ from src.probes import get_ping_diagnostics, run_http_check, run_ping, run_tcp_c
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.22")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.24")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
+SCHEDULER_POLL_SECONDS = int(os.getenv("MONITOR_SCHEDULER_POLL_SECONDS", "5"))
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-
 logger = logging.getLogger(__name__)
+PROBE_BATCH_LOCK = threading.Lock()
 
 
 def _normalize_probe_error(error: object) -> str | None:
@@ -54,6 +74,240 @@ def _normalize_probe_error(error: object) -> str | None:
     if not text:
         return None
     return text[:500]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _coerce_dt(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _probe_due(last_run_at: object, interval_seconds: int) -> bool:
+    if interval_seconds <= 0:
+        return False
+    last_dt = _coerce_dt(last_run_at)
+    if last_dt is None:
+        return True
+    return _utc_now() >= last_dt + timedelta(seconds=interval_seconds)
+
+
+def _channel_status() -> dict:
+    telegram_token = os.getenv("ALERT_TELEGRAM_BOT_TOKEN", "").strip()
+    telegram_chat_id = os.getenv("ALERT_TELEGRAM_CHAT_ID", "").strip()
+    smtp_host = os.getenv("ALERT_SMTP_HOST", "").strip()
+    email_to = os.getenv("ALERT_EMAIL_TO", "").strip()
+    email_from = os.getenv("ALERT_EMAIL_FROM", "").strip() or os.getenv("ALERT_SMTP_USER", "").strip()
+    return {
+        "telegram_configured": bool(telegram_token and telegram_chat_id),
+        "telegram_target": telegram_chat_id or None,
+        "email_configured": bool(smtp_host and email_to and email_from),
+        "email_target": email_to or None,
+    }
+
+
+def _alert_subject_prefix(event_type: str) -> str:
+    mapping = {
+        "new": "Новый alert",
+        "resolved": "Alert resolved",
+        "reminder": "Напоминание",
+        "test": "Тестовое уведомление",
+    }
+    return mapping.get(event_type, "Alert")
+
+
+def _format_age(seconds: object) -> str:
+    try:
+        total = int(seconds or 0)
+    except Exception:
+        total = 0
+    if total < 60:
+        return f"{total} сек"
+    minutes, secs = divmod(total, 60)
+    if minutes < 60:
+        return f"{minutes} мин {secs} сек"
+    hours, mins = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours} ч {mins} мин"
+    days, hrs = divmod(hours, 24)
+    return f"{days} д {hrs} ч"
+
+
+def _compose_alert_message(alert: dict, event_type: str, server_name: str | None, server_host: str | None) -> tuple[str, str]:
+    title = _alert_subject_prefix(event_type)
+    server_line = f"{server_name or '—'} ({server_host or '—'})"
+    message = alert.get("message") or "Без текста"
+    if alert.get("alert_type") == "monitor_stale":
+        stale_for = alert.get("stale_for_seconds")
+        if stale_for:
+            message = f"{message} · stale_for={_format_age(stale_for)}"
+    subject = f"[{APP_DISPLAY_NAME}] {title}: {server_name or 'server'} / {alert.get('alert_type') or 'alert'}"
+    body = "\n".join([
+        f"{title}",
+        f"Сервер: {server_line}",
+        f"Тип: {alert.get('alert_type') or 'alert'}",
+        f"Severity: {alert.get('severity') or 'warning'}",
+        f"Сообщение: {message}",
+        f"Время: {_utc_now().isoformat()}",
+        f"Панель: {APP_PUBLIC_BASE_URL}",
+    ])
+    return subject, body
+
+
+def _send_telegram_message(subject: str, body: str) -> tuple[bool, str | None, str | None]:
+    token = os.getenv("ALERT_TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("ALERT_TELEGRAM_CHAT_ID", "").strip()
+    if not token or not chat_id:
+        return False, None, "telegram not configured"
+    text = f"{subject}\n\n{body}"
+    payload = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode("utf-8")
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+            return True, chat_id, raw[:500]
+    except Exception as exc:
+        return False, chat_id, _normalize_probe_error(exc)
+
+
+def _send_email_message(subject: str, body: str) -> tuple[bool, str | None, str | None]:
+    smtp_host = os.getenv("ALERT_SMTP_HOST", "").strip()
+    smtp_port = int(os.getenv("ALERT_SMTP_PORT", "587"))
+    smtp_user = os.getenv("ALERT_SMTP_USER", "").strip()
+    smtp_password = os.getenv("ALERT_SMTP_PASSWORD", "")
+    smtp_from = os.getenv("ALERT_EMAIL_FROM", "").strip() or smtp_user
+    email_to = os.getenv("ALERT_EMAIL_TO", "").strip()
+    smtp_mode = os.getenv("ALERT_SMTP_MODE", "starttls").strip().lower()
+    if not smtp_host or not email_to or not smtp_from:
+        return False, email_to or None, "smtp/email not configured"
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = smtp_from
+    msg["To"] = email_to
+    msg.set_content(body)
+    try:
+        if smtp_mode == "ssl":
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10, context=ssl.create_default_context()) as client:
+                if smtp_user:
+                    client.login(smtp_user, smtp_password)
+                client.send_message(msg)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as client:
+                client.ehlo()
+                if smtp_mode != "plain":
+                    client.starttls(context=ssl.create_default_context())
+                    client.ehlo()
+                if smtp_user:
+                    client.login(smtp_user, smtp_password)
+                client.send_message(msg)
+        return True, email_to, "sent"
+    except Exception as exc:
+        return False, email_to, _normalize_probe_error(exc)
+
+
+def _dispatch_alert_notification(alert: dict, event_type: str, server_name: str | None, server_host: str | None, settings: dict | None = None) -> dict:
+    settings = settings or get_alert_settings()
+    alert_id = alert.get("id")
+    subject, body = _compose_alert_message(alert, event_type, server_name, server_host)
+    channels = _channel_status()
+    if not settings.get("notifications_enabled"):
+        if alert_id:
+            mark_alert_delivery_attempt(alert_id=alert_id, status="skipped", error="notifications disabled")
+        return {"sent": 0, "failed": 0, "skipped": 1}
+
+    attempts = []
+    if channels.get("telegram_configured"):
+        ok, target, response_or_error = _send_telegram_message(subject, body)
+        insert_alert_delivery_log(alert_id, alert.get("server_id"), server_name, server_host, alert.get("alert_type"), event_type, "telegram", target, "sent" if ok else "failed", subject, None if ok else response_or_error)
+        attempts.append(ok)
+    if channels.get("email_configured"):
+        ok, target, response_or_error = _send_email_message(subject, body)
+        insert_alert_delivery_log(alert_id, alert.get("server_id"), server_name, server_host, alert.get("alert_type"), event_type, "email", target, "sent" if ok else "failed", subject, None if ok else response_or_error)
+        attempts.append(ok)
+
+    if not attempts:
+        if alert_id:
+            insert_alert_delivery_log(alert_id, alert.get("server_id"), server_name, server_host, alert.get("alert_type"), event_type, "system", None, "skipped", subject, "no delivery channels configured")
+            mark_alert_delivery_attempt(alert_id=alert_id, status="skipped", error="no delivery channels configured")
+        return {"sent": 0, "failed": 0, "skipped": 1}
+
+    sent = sum(1 for item in attempts if item)
+    failed = sum(1 for item in attempts if not item)
+    if alert_id:
+        mark_alert_delivery_attempt(alert_id=alert_id, status="sent" if sent > 0 else "failed", error=None if sent > 0 else "all delivery channels failed")
+    return {"sent": sent, "failed": failed, "skipped": 0}
+
+
+def _maybe_notify_new_alert(alert_row: dict | None, server_name: str | None, server_host: str | None, settings: dict | None = None) -> None:
+    if not alert_row or alert_row.get("_event") != "created":
+        return
+    settings = settings or get_alert_settings()
+    if settings.get("notify_on_new_alert"):
+        _dispatch_alert_notification(alert_row, "new", server_name, server_host, settings)
+
+
+def _maybe_notify_resolved_alerts(resolved_rows: list[dict], server_name: str | None, server_host: str | None, settings: dict | None = None) -> None:
+    if not resolved_rows:
+        return
+    settings = settings or get_alert_settings()
+    if not settings.get("notify_on_resolved"):
+        return
+    for row in resolved_rows:
+        _dispatch_alert_notification(row, "resolved", server_name, server_host, settings)
+
+
+def _evaluate_stale_alerts(settings: dict | None = None) -> dict:
+    settings = settings or get_alert_settings()
+    if not settings.get("stale_alert_enabled"):
+        resolved = 0
+        for row in list_active_alerts():
+            if row.get("alert_type") == "monitor_stale":
+                resolved_rows = resolve_alert(server_id=row["server_id"], alert_type="monitor_stale")
+                if resolved_rows:
+                    resolved += len(resolved_rows)
+                    _maybe_notify_resolved_alerts(resolved_rows, row.get("server_name"), row.get("server_host"), settings)
+        return {"created": 0, "resolved": resolved}
+    created = 0
+    resolved = 0
+    stale_candidates = list_servers_requiring_stale_alert(int(settings.get("stale_after_seconds") or 900))
+    stale_ids = {int(item["id"]) for item in stale_candidates}
+    for server in stale_candidates:
+        message = f"Данные мониторинга устарели: последняя проверка {server.get('last_check_at')}"
+        alert_row = set_alert_active(server_id=server["id"], alert_type="monitor_stale", severity="warning", message=message)
+        alert_row["stale_for_seconds"] = server.get("stale_for_seconds")
+        if alert_row.get("_event") == "created":
+            created += 1
+            _maybe_notify_new_alert(alert_row, server.get("name"), server.get("host"), settings)
+    for row in list_active_alerts():
+        if row.get("alert_type") == "monitor_stale" and int(row.get("server_id") or 0) not in stale_ids:
+            resolved_rows = resolve_alert(server_id=row["server_id"], alert_type="monitor_stale")
+            if resolved_rows:
+                resolved += len(resolved_rows)
+                _maybe_notify_resolved_alerts(resolved_rows, row.get("server_name"), row.get("server_host"), settings)
+    return {"created": created, "resolved": resolved}
+
+
+def _dispatch_due_reminders(settings: dict | None = None) -> int:
+    settings = settings or get_alert_settings()
+    sent = 0
+    for alert in list_alerts_for_reminder(int(settings.get("reminder_interval_seconds") or 3600)):
+        result = _dispatch_alert_notification(alert, "reminder", alert.get("server_name"), alert.get("server_host"), settings)
+        sent += int(result.get("sent") or 0)
+    return sent
 
 
 def _run_ping_probe_for_server(server: dict, timeout_seconds: int) -> dict:
@@ -69,13 +323,17 @@ def _run_ping_probe_for_server(server: dict, timeout_seconds: int) -> dict:
         )
 
         if probe["ok"]:
-            resolve_alert(server_id=server["id"], alert_type="ping_down")
+            _maybe_notify_resolved_alerts(resolve_alert(server_id=server["id"], alert_type="ping_down"), server.get("name"), server.get("host"))
         else:
-            set_alert_active(
-                server_id=server["id"],
-                alert_type="ping_down",
-                severity="critical",
-                message=f"Ping недоступен: {_normalize_probe_error(probe['error']) or 'host unreachable'}",
+            _maybe_notify_new_alert(
+                set_alert_active(
+                    server_id=server["id"],
+                    alert_type="ping_down",
+                    severity="critical",
+                    message=f"Ping недоступен: {_normalize_probe_error(probe['error']) or 'host unreachable'}",
+                ),
+                server.get("name"),
+                server.get("host"),
             )
     except Exception as exc:
         logger.exception("Ping probe persistence failed for server_id=%s host=%s", server.get("id"), server.get("host"))
@@ -110,13 +368,17 @@ def _run_ssh_probe_for_server(server: dict, timeout_seconds: int) -> dict:
             error=_normalize_probe_error(probe["error"]),
         )
         if probe["ok"]:
-            resolve_alert(server_id=server["id"], alert_type="ssh_down")
+            _maybe_notify_resolved_alerts(resolve_alert(server_id=server["id"], alert_type="ssh_down"), server.get("name"), server.get("host"))
         else:
-            set_alert_active(
-                server_id=server["id"],
-                alert_type="ssh_down",
-                severity="critical",
-                message=f"SSH порт недоступен: {_normalize_probe_error(probe['error']) or 'tcp connect failed'}",
+            _maybe_notify_new_alert(
+                set_alert_active(
+                    server_id=server["id"],
+                    alert_type="ssh_down",
+                    severity="critical",
+                    message=f"SSH порт недоступен: {_normalize_probe_error(probe['error']) or 'tcp connect failed'}",
+                ),
+                server.get("name"),
+                server.get("host"),
             )
     except Exception as exc:
         logger.exception("SSH probe persistence failed for server_id=%s host=%s", server.get("id"), server.get("host"))
@@ -184,13 +446,17 @@ def _run_http_probe_for_server(server: dict, timeout_seconds: int) -> dict:
             error=_normalize_probe_error(probe["error"]),
         )
         if probe["ok"] is True:
-            resolve_alert(server_id=server["id"], alert_type="http_down")
+            _maybe_notify_resolved_alerts(resolve_alert(server_id=server["id"], alert_type="http_down"), server.get("name"), server.get("host"))
         elif probe["ok"] is False:
-            set_alert_active(
-                server_id=server["id"],
-                alert_type="http_down",
-                severity="warning",
-                message=f"HTTP/HTTPS недоступен: {_normalize_probe_error(probe['error']) or 'request failed'}",
+            _maybe_notify_new_alert(
+                set_alert_active(
+                    server_id=server["id"],
+                    alert_type="http_down",
+                    severity="warning",
+                    message=f"HTTP/HTTPS недоступен: {_normalize_probe_error(probe['error']) or 'request failed'}",
+                ),
+                server.get("name"),
+                server.get("host"),
             )
     except Exception as exc:
         logger.exception("HTTP probe persistence failed for server_id=%s host=%s", server.get("id"), server.get("host"))
@@ -215,10 +481,198 @@ def _run_http_probe_for_server(server: dict, timeout_seconds: int) -> dict:
     }
 
 
+def _record_probe_history(result: dict, probe_type: str, source: str, started_at: datetime, finished_at: datetime) -> None:
+    try:
+        insert_probe_history(
+            server_id=result["server_id"],
+            server_name_snapshot=result.get("name") or f"server-{result['server_id']}",
+            server_host_snapshot=result.get("host") or result.get("url") or "—",
+            probe_type=probe_type,
+            source=source,
+            ok=result.get("ok"),
+            latency_ms=result.get("latency_ms") if probe_type != "http" else result.get("response_ms"),
+            status_code=result.get("status_code"),
+            error=_normalize_probe_error(result.get("error")),
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+    except Exception:
+        logger.exception(
+            "Probe history persistence failed for server_id=%s probe_type=%s source=%s",
+            result.get("server_id"),
+            probe_type,
+            source,
+        )
+
+
+def _execute_ping_batch(timeout_seconds: int, source: str) -> dict:
+    with PROBE_BATCH_LOCK:
+        servers = list_enabled_servers()
+        results = []
+        ok_count = 0
+        fail_count = 0
+
+        for server in servers:
+            started_at = _utc_now()
+            try:
+                result = _run_ping_probe_for_server(server, timeout_seconds)
+            except Exception as exc:
+                logger.exception("Ping probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
+                result = {
+                    "server_id": server["id"],
+                    "name": server["name"],
+                    "host": server["host"],
+                    "ok": False,
+                    "probe_ok": False,
+                    "latency_ms": None,
+                    "error": f"unexpected ping probe error: {_normalize_probe_error(exc)}",
+                    "persistence_error": None,
+                }
+            finished_at = _utc_now()
+            _record_probe_history(result, probe_type="ping", source=source, started_at=started_at, finished_at=finished_at)
+
+            if result["ok"]:
+                ok_count += 1
+            else:
+                fail_count += 1
+            results.append(result)
+
+        if source == "scheduler":
+            mark_scheduler_probe_run("ping")
+
+        return {"processed": len(servers), "ok": ok_count, "failed": fail_count, "results": results, "source": source}
+
+
+def _execute_ssh_batch(timeout_seconds: int, source: str) -> dict:
+    with PROBE_BATCH_LOCK:
+        servers = list_enabled_servers()
+        results = []
+        ok_count = 0
+        fail_count = 0
+
+        for server in servers:
+            started_at = _utc_now()
+            try:
+                result = _run_ssh_probe_for_server(server, timeout_seconds)
+            except Exception as exc:
+                logger.exception("SSH probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
+                result = {
+                    "server_id": server["id"],
+                    "name": server["name"],
+                    "host": server["host"],
+                    "port": server["ssh_port"],
+                    "ok": False,
+                    "probe_ok": False,
+                    "latency_ms": None,
+                    "error": f"unexpected ssh probe error: {_normalize_probe_error(exc)}",
+                    "persistence_error": None,
+                }
+            finished_at = _utc_now()
+            _record_probe_history(result, probe_type="ssh", source=source, started_at=started_at, finished_at=finished_at)
+
+            if result["ok"]:
+                ok_count += 1
+            else:
+                fail_count += 1
+            results.append(result)
+
+        if source == "scheduler":
+            mark_scheduler_probe_run("ssh")
+
+        return {"processed": len(servers), "ok": ok_count, "failed": fail_count, "results": results, "source": source}
+
+
+def _execute_http_batch(timeout_seconds: int, source: str) -> dict:
+    with PROBE_BATCH_LOCK:
+        servers = list_enabled_servers()
+        results = []
+        ok_count = 0
+        fail_count = 0
+        skipped_count = 0
+
+        for server in servers:
+            started_at = _utc_now()
+            try:
+                result = _run_http_probe_for_server(server, timeout_seconds)
+            except Exception as exc:
+                logger.exception("HTTP probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
+                result = {
+                    "server_id": server["id"],
+                    "name": server["name"],
+                    "url": server.get("web_url"),
+                    "ok": False,
+                    "probe_ok": False,
+                    "status_code": None,
+                    "response_ms": None,
+                    "error": f"unexpected http probe error: {_normalize_probe_error(exc)}",
+                    "skipped": False,
+                    "persistence_error": None,
+                }
+            finished_at = _utc_now()
+            _record_probe_history(result, probe_type="http", source=source, started_at=started_at, finished_at=finished_at)
+
+            if result.get("skipped"):
+                skipped_count += 1
+            elif result["ok"]:
+                ok_count += 1
+            else:
+                fail_count += 1
+            results.append(result)
+
+        if source == "scheduler":
+            mark_scheduler_probe_run("http")
+
+        return {
+            "processed": len(servers),
+            "ok": ok_count,
+            "failed": fail_count,
+            "skipped": skipped_count,
+            "results": results,
+            "source": source,
+        }
+
+
+async def _scheduler_loop(stop_event: asyncio.Event) -> None:
+    logger.info("Background scheduler loop started with poll=%ss", SCHEDULER_POLL_SECONDS)
+    while not stop_event.is_set():
+        try:
+            settings = get_monitor_settings()
+            alert_settings = get_alert_settings()
+            if settings.get("scheduler_enabled"):
+                if _probe_due(settings.get("last_ping_scheduler_run_at"), int(settings.get("ping_interval_seconds") or 0)):
+                    logger.info("Scheduler starting ping batch")
+                    await asyncio.to_thread(_execute_ping_batch, int(settings.get("ping_timeout_seconds") or 2), "scheduler")
+                    settings = get_monitor_settings()
+                if _probe_due(settings.get("last_ssh_scheduler_run_at"), int(settings.get("ssh_interval_seconds") or 0)):
+                    logger.info("Scheduler starting ssh batch")
+                    await asyncio.to_thread(_execute_ssh_batch, int(settings.get("tcp_timeout_seconds") or 3), "scheduler")
+                    settings = get_monitor_settings()
+                if _probe_due(settings.get("last_http_scheduler_run_at"), int(settings.get("http_interval_seconds") or 0)):
+                    logger.info("Scheduler starting http batch")
+                    await asyncio.to_thread(_execute_http_batch, int(settings.get("http_timeout_seconds") or 5), "scheduler")
+            await asyncio.to_thread(_evaluate_stale_alerts, alert_settings)
+            await asyncio.to_thread(_dispatch_due_reminders, alert_settings)
+        except Exception:
+            logger.exception("Background scheduler iteration failed")
+
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=SCHEDULER_POLL_SECONDS)
+        except asyncio.TimeoutError:
+            continue
+
+    logger.info("Background scheduler loop stopped")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    yield
+    stop_event = asyncio.Event()
+    scheduler_task = asyncio.create_task(_scheduler_loop(stop_event))
+    try:
+        yield
+    finally:
+        stop_event.set()
+        await scheduler_task
 
 
 app = FastAPI(title="Server Orchestration API", version=APP_VERSION, lifespan=lifespan)
@@ -252,6 +706,25 @@ class ConnectivityProbeRequest(BaseModel):
     http_timeout_seconds: int = Field(default=5, ge=1, le=30)
 
 
+class MonitorSettingsPayload(BaseModel):
+    scheduler_enabled: bool = True
+    ping_interval_seconds: int = Field(default=60, ge=15, le=86400)
+    ssh_interval_seconds: int = Field(default=120, ge=15, le=86400)
+    http_interval_seconds: int = Field(default=180, ge=15, le=86400)
+    ping_timeout_seconds: int = Field(default=2, ge=1, le=10)
+    tcp_timeout_seconds: int = Field(default=3, ge=1, le=15)
+    http_timeout_seconds: int = Field(default=5, ge=1, le=30)
+
+
+class AlertSettingsPayload(BaseModel):
+    notifications_enabled: bool = False
+    notify_on_new_alert: bool = True
+    notify_on_resolved: bool = True
+    stale_alert_enabled: bool = True
+    stale_after_seconds: int = Field(default=900, ge=60, le=86400)
+    reminder_interval_seconds: int = Field(default=3600, ge=60, le=604800)
+
+
 @app.get("/", response_class=FileResponse)
 def root():
     return FileResponse(STATIC_DIR / "index.html")
@@ -270,7 +743,7 @@ def health():
         "service": APP_NAME,
         "version": APP_VERSION,
         "database": db_ok,
-        "time_utc": datetime.now(timezone.utc).isoformat(),
+        "time_utc": _utc_now().isoformat(),
     }
 
 
@@ -282,12 +755,44 @@ def version():
         "version": APP_VERSION,
         "timezone": APP_TZ,
         "public_base_url": APP_PUBLIC_BASE_URL,
+        "scheduler_poll_seconds": SCHEDULER_POLL_SECONDS,
     }
 
 
 @app.get("/api/summary")
 def api_summary():
     return get_summary()
+
+
+@app.get("/api/monitor/settings")
+def api_get_monitor_settings():
+    return get_monitor_settings()
+
+
+@app.put("/api/monitor/settings")
+def api_update_monitor_settings(payload: MonitorSettingsPayload):
+    try:
+        return update_monitor_settings(
+            scheduler_enabled=payload.scheduler_enabled,
+            ping_interval_seconds=payload.ping_interval_seconds,
+            ssh_interval_seconds=payload.ssh_interval_seconds,
+            http_interval_seconds=payload.http_interval_seconds,
+            ping_timeout_seconds=payload.ping_timeout_seconds,
+            tcp_timeout_seconds=payload.tcp_timeout_seconds,
+            http_timeout_seconds=payload.http_timeout_seconds,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/probes/history")
+def api_probe_history(
+    limit: int = Query(default=50, ge=1, le=500),
+    server_id: int | None = Query(default=None),
+    probe_type: str | None = Query(default=None),
+    source: str | None = Query(default=None),
+):
+    return list_probe_history(limit=limit, server_id=server_id, probe_type=probe_type, source=source)
 
 
 @app.get("/api/servers")
@@ -402,6 +907,47 @@ def api_list_alerts():
     return list_active_alerts()
 
 
+@app.get("/api/alerts/settings")
+def api_get_alert_settings():
+    settings = get_alert_settings()
+    settings.update(_channel_status())
+    return settings
+
+
+@app.put("/api/alerts/settings")
+def api_update_alert_settings(payload: AlertSettingsPayload):
+    try:
+        row = update_alert_settings(
+            notifications_enabled=payload.notifications_enabled,
+            notify_on_new_alert=payload.notify_on_new_alert,
+            notify_on_resolved=payload.notify_on_resolved,
+            stale_alert_enabled=payload.stale_alert_enabled,
+            stale_after_seconds=payload.stale_after_seconds,
+            reminder_interval_seconds=payload.reminder_interval_seconds,
+        )
+        row.update(_channel_status())
+        return row
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/alerts/deliveries")
+def api_list_alert_deliveries(limit: int = Query(default=50, ge=1, le=500)):
+    return list_alert_delivery_log(limit=limit)
+
+
+@app.post("/api/alerts/test")
+def api_send_test_alert():
+    payload = {
+        "id": None,
+        "server_id": None,
+        "alert_type": "test_notification",
+        "severity": "info",
+        "message": "Тестовое уведомление из панели ServerOrchestration.",
+    }
+    return _dispatch_alert_notification(payload, "test", "test-panel", APP_PUBLIC_BASE_URL, get_alert_settings())
+
+
 @app.get("/api/probes/ping/diagnostics")
 def api_ping_diagnostics():
     return get_ping_diagnostics()
@@ -409,109 +955,22 @@ def api_ping_diagnostics():
 
 @app.post("/api/probes/ping/run")
 def api_run_ping_probe(payload: PingProbeRequest):
-    servers = list_enabled_servers()
-    results = []
-    ok_count = 0
-    fail_count = 0
-
-    for server in servers:
-        try:
-            result = _run_ping_probe_for_server(server, payload.timeout_seconds)
-        except Exception as exc:
-            logger.exception("Ping probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
-            result = {
-                "server_id": server["id"],
-                "name": server["name"],
-                "host": server["host"],
-                "ok": False,
-                "probe_ok": False,
-                "latency_ms": None,
-                "error": f"unexpected ping probe error: {_normalize_probe_error(exc)}",
-                "persistence_error": None,
-            }
-
-        if result["ok"]:
-            ok_count += 1
-        else:
-            fail_count += 1
-        results.append(result)
-
-    return {"processed": len(servers), "ok": ok_count, "failed": fail_count, "results": results}
+    return _execute_ping_batch(timeout_seconds=payload.timeout_seconds, source="manual")
 
 
 @app.post("/api/probes/ssh/run")
 def api_run_ssh_probe(payload: ConnectivityProbeRequest):
-    servers = list_enabled_servers()
-    results = []
-    ok_count = 0
-    fail_count = 0
-
-    for server in servers:
-        try:
-            result = _run_ssh_probe_for_server(server, payload.tcp_timeout_seconds)
-        except Exception as exc:
-            logger.exception("SSH probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
-            result = {
-                "server_id": server["id"],
-                "name": server["name"],
-                "host": server["host"],
-                "port": server["ssh_port"],
-                "ok": False,
-                "probe_ok": False,
-                "latency_ms": None,
-                "error": f"unexpected ssh probe error: {_normalize_probe_error(exc)}",
-                "persistence_error": None,
-            }
-
-        if result["ok"]:
-            ok_count += 1
-        else:
-            fail_count += 1
-        results.append(result)
-
-    return {"processed": len(servers), "ok": ok_count, "failed": fail_count, "results": results}
+    return _execute_ssh_batch(timeout_seconds=payload.tcp_timeout_seconds, source="manual")
 
 
 @app.post("/api/probes/http/run")
 def api_run_http_probe(payload: ConnectivityProbeRequest):
-    servers = list_enabled_servers()
-    results = []
-    ok_count = 0
-    fail_count = 0
-    skipped_count = 0
-
-    for server in servers:
-        try:
-            result = _run_http_probe_for_server(server, payload.http_timeout_seconds)
-        except Exception as exc:
-            logger.exception("HTTP probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
-            result = {
-                "server_id": server["id"],
-                "name": server["name"],
-                "url": server.get("web_url"),
-                "ok": False,
-                "probe_ok": False,
-                "status_code": None,
-                "response_ms": None,
-                "error": f"unexpected http probe error: {_normalize_probe_error(exc)}",
-                "skipped": False,
-                "persistence_error": None,
-            }
-
-        if result.get("skipped"):
-            skipped_count += 1
-        elif result["ok"]:
-            ok_count += 1
-        else:
-            fail_count += 1
-        results.append(result)
-
-    return {"processed": len(servers), "ok": ok_count, "failed": fail_count, "skipped": skipped_count, "results": results}
+    return _execute_http_batch(timeout_seconds=payload.http_timeout_seconds, source="manual")
 
 
 @app.post("/api/probes/connectivity/run")
 def api_run_connectivity_probe(payload: ConnectivityProbeRequest):
-    ping_result = api_run_ping_probe(PingProbeRequest(timeout_seconds=min(payload.tcp_timeout_seconds, 10)))
-    ssh_result = api_run_ssh_probe(payload)
-    http_result = api_run_http_probe(payload)
+    ping_result = _execute_ping_batch(timeout_seconds=min(payload.tcp_timeout_seconds, 10), source="manual")
+    ssh_result = _execute_ssh_batch(timeout_seconds=payload.tcp_timeout_seconds, source="manual")
+    http_result = _execute_http_batch(timeout_seconds=payload.http_timeout_seconds, source="manual")
     return {"ping": ping_result, "ssh": ssh_result, "http": http_result}

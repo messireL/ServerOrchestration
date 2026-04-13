@@ -420,6 +420,26 @@ input:focus, textarea:focus, select:focus {
 textarea { resize: vertical; }
 .search-field { max-width: 420px; margin-bottom: 14px; }
 
+.field-inline {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.field-inline input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.micro-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .filter-toolbar {
   display: flex;
   flex-wrap: wrap;

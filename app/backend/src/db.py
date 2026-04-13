@@ -135,6 +135,142 @@ def init_db() -> None:
                 ON alerts(server_id, status, alert_type);
                 """
             )
+            cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS notify_count INTEGER NOT NULL DEFAULT 0;")
+            cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMPTZ;")
+            cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS last_delivery_status TEXT;")
+            cur.execute("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS last_delivery_error TEXT;")
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS alert_settings (
+                    id SMALLINT PRIMARY KEY CHECK (id = 1),
+                    notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    notify_on_new_alert BOOLEAN NOT NULL DEFAULT TRUE,
+                    notify_on_resolved BOOLEAN NOT NULL DEFAULT TRUE,
+                    stale_alert_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    stale_after_seconds INTEGER NOT NULL DEFAULT 900,
+                    reminder_interval_seconds INTEGER NOT NULL DEFAULT 3600,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            cur.execute("ALTER TABLE alert_settings ADD COLUMN IF NOT EXISTS notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE;")
+            cur.execute("ALTER TABLE alert_settings ADD COLUMN IF NOT EXISTS notify_on_new_alert BOOLEAN NOT NULL DEFAULT TRUE;")
+            cur.execute("ALTER TABLE alert_settings ADD COLUMN IF NOT EXISTS notify_on_resolved BOOLEAN NOT NULL DEFAULT TRUE;")
+            cur.execute("ALTER TABLE alert_settings ADD COLUMN IF NOT EXISTS stale_alert_enabled BOOLEAN NOT NULL DEFAULT TRUE;")
+            cur.execute("ALTER TABLE alert_settings ADD COLUMN IF NOT EXISTS stale_after_seconds INTEGER NOT NULL DEFAULT 900;")
+            cur.execute("ALTER TABLE alert_settings ADD COLUMN IF NOT EXISTS reminder_interval_seconds INTEGER NOT NULL DEFAULT 3600;")
+            cur.execute("ALTER TABLE alert_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+            cur.execute("ALTER TABLE alert_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+            cur.execute(
+                """
+                INSERT INTO alert_settings (id)
+                VALUES (1)
+                ON CONFLICT (id) DO NOTHING;
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS alert_delivery_log (
+                    id BIGSERIAL PRIMARY KEY,
+                    alert_id BIGINT REFERENCES alerts(id) ON DELETE SET NULL,
+                    server_id BIGINT REFERENCES servers(id) ON DELETE SET NULL,
+                    server_name_snapshot TEXT,
+                    server_host_snapshot TEXT,
+                    alert_type TEXT,
+                    event_type TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    target TEXT,
+                    status TEXT NOT NULL,
+                    message TEXT,
+                    error TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_alert_delivery_log_created_at
+                ON alert_delivery_log(created_at DESC, id DESC);
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS monitor_settings (
+                    id SMALLINT PRIMARY KEY CHECK (id = 1),
+                    scheduler_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    ping_interval_seconds INTEGER NOT NULL DEFAULT 60,
+                    ssh_interval_seconds INTEGER NOT NULL DEFAULT 120,
+                    http_interval_seconds INTEGER NOT NULL DEFAULT 180,
+                    ping_timeout_seconds INTEGER NOT NULL DEFAULT 2,
+                    tcp_timeout_seconds INTEGER NOT NULL DEFAULT 3,
+                    http_timeout_seconds INTEGER NOT NULL DEFAULT 5,
+                    last_ping_scheduler_run_at TIMESTAMPTZ,
+                    last_ssh_scheduler_run_at TIMESTAMPTZ,
+                    last_http_scheduler_run_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS scheduler_enabled BOOLEAN NOT NULL DEFAULT TRUE;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ping_interval_seconds INTEGER NOT NULL DEFAULT 60;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ssh_interval_seconds INTEGER NOT NULL DEFAULT 120;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS http_interval_seconds INTEGER NOT NULL DEFAULT 180;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ping_timeout_seconds INTEGER NOT NULL DEFAULT 2;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS tcp_timeout_seconds INTEGER NOT NULL DEFAULT 3;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS http_timeout_seconds INTEGER NOT NULL DEFAULT 5;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_ping_scheduler_run_at TIMESTAMPTZ;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_ssh_scheduler_run_at TIMESTAMPTZ;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_http_scheduler_run_at TIMESTAMPTZ;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+            cur.execute(
+                """
+                INSERT INTO monitor_settings (id)
+                VALUES (1)
+                ON CONFLICT (id) DO NOTHING;
+                """
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS probe_history (
+                    id BIGSERIAL PRIMARY KEY,
+                    server_id BIGINT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+                    server_name_snapshot TEXT NOT NULL,
+                    server_host_snapshot TEXT NOT NULL,
+                    probe_type TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    ok BOOLEAN,
+                    latency_ms INTEGER,
+                    status_code INTEGER,
+                    error TEXT,
+                    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    finished_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                """
+            )
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS server_name_snapshot TEXT;")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS server_host_snapshot TEXT;")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS probe_type TEXT;")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS ok BOOLEAN;")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS latency_ms INTEGER;")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS status_code INTEGER;")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS error TEXT;")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+            cur.execute("UPDATE probe_history SET server_name_snapshot = COALESCE(server_name_snapshot, '') WHERE server_name_snapshot IS NULL;")
+            cur.execute("UPDATE probe_history SET server_host_snapshot = COALESCE(server_host_snapshot, '') WHERE server_host_snapshot IS NULL;")
+            cur.execute("UPDATE probe_history SET probe_type = COALESCE(probe_type, 'ping') WHERE probe_type IS NULL;")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_probe_history_started_at ON probe_history(started_at DESC);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_probe_history_server_probe ON probe_history(server_id, probe_type, started_at DESC);")
 
         conn.commit()
 
@@ -522,6 +658,198 @@ def update_http_status(server_id: int, http_ok: bool | None, http_status_code: i
         conn.commit()
 
 
+def insert_probe_history(
+    server_id: int,
+    server_name_snapshot: str,
+    server_host_snapshot: str,
+    probe_type: str,
+    source: str,
+    ok: bool | None,
+    latency_ms: int | None = None,
+    status_code: int | None = None,
+    error: str | None = None,
+    started_at = None,
+    finished_at = None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO probe_history (
+                    server_id,
+                    server_name_snapshot,
+                    server_host_snapshot,
+                    probe_type,
+                    source,
+                    ok,
+                    latency_ms,
+                    status_code,
+                    error,
+                    started_at,
+                    finished_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()), COALESCE(%s, NOW()))
+                RETURNING *;
+                """,
+                (
+                    server_id,
+                    server_name_snapshot,
+                    server_host_snapshot,
+                    probe_type,
+                    source,
+                    ok,
+                    latency_ms,
+                    status_code,
+                    error,
+                    started_at,
+                    finished_at,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row
+
+
+def list_probe_history(limit: int = 50, server_id: int | None = None, probe_type: str | None = None, source: str | None = None) -> list[dict[str, Any]]:
+    limit = max(1, min(int(limit or 50), 500))
+    clauses = []
+    params: list[Any] = []
+    if server_id is not None:
+        clauses.append("ph.server_id = %s")
+        params.append(server_id)
+    if probe_type:
+        clauses.append("ph.probe_type = %s")
+        params.append(probe_type)
+    if source:
+        clauses.append("ph.source = %s")
+        params.append(source)
+
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"""
+        SELECT
+            ph.id,
+            ph.server_id,
+            ph.server_name_snapshot AS server_name,
+            ph.server_host_snapshot AS server_host,
+            ph.probe_type,
+            ph.source,
+            ph.ok,
+            ph.latency_ms,
+            ph.status_code,
+            ph.error,
+            ph.started_at,
+            ph.finished_at,
+            ph.created_at
+        FROM probe_history ph
+        {where_sql}
+        ORDER BY ph.started_at DESC, ph.id DESC
+        LIMIT %s;
+    """
+    params.append(limit)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchall()
+
+
+def get_monitor_settings() -> dict[str, Any]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    scheduler_enabled,
+                    ping_interval_seconds,
+                    ssh_interval_seconds,
+                    http_interval_seconds,
+                    ping_timeout_seconds,
+                    tcp_timeout_seconds,
+                    http_timeout_seconds,
+                    last_ping_scheduler_run_at,
+                    last_ssh_scheduler_run_at,
+                    last_http_scheduler_run_at,
+                    created_at,
+                    updated_at
+                FROM monitor_settings
+                WHERE id = 1;
+                """
+            )
+            row = cur.fetchone()
+            if row:
+                return row
+
+        conn.commit()
+    init_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM monitor_settings WHERE id = 1;")
+            return cur.fetchone()
+
+
+def update_monitor_settings(
+    scheduler_enabled: bool,
+    ping_interval_seconds: int,
+    ssh_interval_seconds: int,
+    http_interval_seconds: int,
+    ping_timeout_seconds: int,
+    tcp_timeout_seconds: int,
+    http_timeout_seconds: int,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE monitor_settings
+                SET
+                    scheduler_enabled = %s,
+                    ping_interval_seconds = %s,
+                    ssh_interval_seconds = %s,
+                    http_interval_seconds = %s,
+                    ping_timeout_seconds = %s,
+                    tcp_timeout_seconds = %s,
+                    http_timeout_seconds = %s,
+                    updated_at = NOW()
+                WHERE id = 1
+                RETURNING *;
+                """,
+                (
+                    scheduler_enabled,
+                    ping_interval_seconds,
+                    ssh_interval_seconds,
+                    http_interval_seconds,
+                    ping_timeout_seconds,
+                    tcp_timeout_seconds,
+                    http_timeout_seconds,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row
+
+
+def mark_scheduler_probe_run(probe_type: str) -> dict[str, Any]:
+    probe_type = (probe_type or '').strip().lower()
+    column_map = {
+        'ping': 'last_ping_scheduler_run_at',
+        'ssh': 'last_ssh_scheduler_run_at',
+        'http': 'last_http_scheduler_run_at',
+    }
+    column = column_map.get(probe_type)
+    if not column:
+        raise ValueError('Unsupported probe type for scheduler state update')
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE monitor_settings SET {column} = NOW(), updated_at = NOW() WHERE id = 1 RETURNING *;"
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row
+
+
 def set_alert_active(server_id: int, alert_type: str, severity: str, message: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -530,6 +858,7 @@ def set_alert_active(server_id: int, alert_type: str, severity: str, message: st
             if row:
                 cur.execute("UPDATE alerts SET severity = %s, message = %s, last_seen_at = NOW(), updated_at = NOW() WHERE id = %s RETURNING *;", (severity, message, row['id']))
                 result = cur.fetchone()
+                result['_event'] = 'updated'
             else:
                 cur.execute(
                     """
@@ -540,6 +869,7 @@ def set_alert_active(server_id: int, alert_type: str, severity: str, message: st
                     (server_id, alert_type, severity, message),
                 )
                 result = cur.fetchone()
+                result['_event'] = 'created'
         conn.commit()
         return result
 
@@ -548,7 +878,7 @@ def resolve_alert(server_id: int, alert_type: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE alerts SET status = 'resolved', resolved_at = NOW(), last_seen_at = NOW(), updated_at = NOW() WHERE server_id = %s AND alert_type = %s AND status = 'active' RETURNING id;",
+                "UPDATE alerts SET status = 'resolved', resolved_at = NOW(), last_seen_at = NOW(), updated_at = NOW() WHERE server_id = %s AND alert_type = %s AND status = 'active' RETURNING *;",
                 (server_id, alert_type),
             )
             rows = cur.fetchall()
@@ -570,6 +900,10 @@ def list_active_alerts() -> list[dict[str, Any]]:
                     a.severity,
                     a.status,
                     a.message,
+                    a.notify_count,
+                    a.last_notified_at,
+                    a.last_delivery_status,
+                    a.last_delivery_error,
                     a.first_seen_at,
                     a.last_seen_at,
                     a.resolved_at,
@@ -579,6 +913,226 @@ def list_active_alerts() -> list[dict[str, Any]]:
                 WHERE a.status = 'active'
                 ORDER BY a.last_seen_at DESC, a.id DESC;
                 """
+            )
+            return cur.fetchall()
+
+
+def get_alert_settings() -> dict[str, Any]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    notifications_enabled,
+                    notify_on_new_alert,
+                    notify_on_resolved,
+                    stale_alert_enabled,
+                    stale_after_seconds,
+                    reminder_interval_seconds,
+                    created_at,
+                    updated_at
+                FROM alert_settings
+                WHERE id = 1;
+                """
+            )
+            row = cur.fetchone()
+            if row:
+                return row
+        conn.commit()
+    init_db()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM alert_settings WHERE id = 1;")
+            return cur.fetchone()
+
+
+def update_alert_settings(
+    notifications_enabled: bool,
+    notify_on_new_alert: bool,
+    notify_on_resolved: bool,
+    stale_alert_enabled: bool,
+    stale_after_seconds: int,
+    reminder_interval_seconds: int,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE alert_settings
+                SET
+                    notifications_enabled = %s,
+                    notify_on_new_alert = %s,
+                    notify_on_resolved = %s,
+                    stale_alert_enabled = %s,
+                    stale_after_seconds = %s,
+                    reminder_interval_seconds = %s,
+                    updated_at = NOW()
+                WHERE id = 1
+                RETURNING *;
+                """,
+                (
+                    notifications_enabled,
+                    notify_on_new_alert,
+                    notify_on_resolved,
+                    stale_alert_enabled,
+                    stale_after_seconds,
+                    reminder_interval_seconds,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row
+
+
+def insert_alert_delivery_log(
+    alert_id: int | None,
+    server_id: int | None,
+    server_name_snapshot: str | None,
+    server_host_snapshot: str | None,
+    alert_type: str | None,
+    event_type: str,
+    channel: str,
+    target: str | None,
+    status: str,
+    message: str | None,
+    error: str | None,
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO alert_delivery_log (
+                    alert_id,
+                    server_id,
+                    server_name_snapshot,
+                    server_host_snapshot,
+                    alert_type,
+                    event_type,
+                    channel,
+                    target,
+                    status,
+                    message,
+                    error
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING *;
+                """,
+                (
+                    alert_id,
+                    server_id,
+                    server_name_snapshot,
+                    server_host_snapshot,
+                    alert_type,
+                    event_type,
+                    channel,
+                    target,
+                    status,
+                    message,
+                    error,
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row
+
+
+def list_alert_delivery_log(limit: int = 50) -> list[dict[str, Any]]:
+    limit = max(1, min(int(limit or 50), 500))
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    alert_id,
+                    server_id,
+                    server_name_snapshot,
+                    server_host_snapshot,
+                    alert_type,
+                    event_type,
+                    channel,
+                    target,
+                    status,
+                    message,
+                    error,
+                    created_at
+                FROM alert_delivery_log
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s;
+                """,
+                (limit,),
+            )
+            return cur.fetchall()
+
+
+def mark_alert_delivery_attempt(alert_id: int, status: str, error: str | None = None):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE alerts
+                SET
+                    notify_count = COALESCE(notify_count, 0) + 1,
+                    last_notified_at = NOW(),
+                    last_delivery_status = %s,
+                    last_delivery_error = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (status, error, alert_id),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return row
+
+
+def list_servers_requiring_stale_alert(stale_after_seconds: int) -> list[dict[str, Any]]:
+    stale_after_seconds = max(60, int(stale_after_seconds or 60))
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    s.id,
+                    s.name,
+                    s.host,
+                    st.last_check_at,
+                    st.last_error,
+                    EXTRACT(EPOCH FROM (NOW() - st.last_check_at))::BIGINT AS stale_for_seconds
+                FROM servers s
+                JOIN server_status st ON st.server_id = s.id
+                WHERE
+                    s.is_enabled = TRUE
+                    AND st.last_check_at IS NOT NULL
+                    AND st.last_check_at < NOW() - (%s * INTERVAL '1 second')
+                ORDER BY st.last_check_at ASC, s.id ASC;
+                """,
+                (stale_after_seconds,),
+            )
+            return cur.fetchall()
+
+
+def list_alerts_for_reminder(reminder_interval_seconds: int) -> list[dict[str, Any]]:
+    reminder_interval_seconds = max(60, int(reminder_interval_seconds or 60))
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    a.*,
+                    s.name AS server_name,
+                    s.host AS server_host
+                FROM alerts a
+                LEFT JOIN servers s ON s.id = a.server_id
+                WHERE
+                    a.status = 'active'
+                    AND a.last_notified_at IS NOT NULL
+                    AND a.last_notified_at < NOW() - (%s * INTERVAL '1 second')
+                ORDER BY a.last_seen_at ASC, a.id ASC;
+                """,
+                (reminder_interval_seconds,),
             )
             return cur.fetchall()
 
@@ -601,6 +1155,18 @@ def get_summary() -> dict[str, Any]:
             http_fail_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE http_ok IS FALSE;")
             http_unknown_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE http_ok IS NULL;")
             active_alerts_total = q("SELECT COUNT(*)::INTEGER AS count FROM alerts WHERE status = 'active';")
+            cur.execute(
+                """
+                SELECT
+                    scheduler_enabled,
+                    last_ping_scheduler_run_at,
+                    last_ssh_scheduler_run_at,
+                    last_http_scheduler_run_at
+                FROM monitor_settings
+                WHERE id = 1;
+                """
+            )
+            monitor = cur.fetchone() or {}
 
         return {
             "servers_total": servers_total,
@@ -617,4 +1183,8 @@ def get_summary() -> dict[str, Any]:
             "http_fail_total": http_fail_total,
             "http_unknown_total": http_unknown_total,
             "active_alerts_total": active_alerts_total,
+            "scheduler_enabled": monitor.get("scheduler_enabled"),
+            "last_ping_scheduler_run_at": monitor.get("last_ping_scheduler_run_at"),
+            "last_ssh_scheduler_run_at": monitor.get("last_ssh_scheduler_run_at"),
+            "last_http_scheduler_run_at": monitor.get("last_http_scheduler_run_at"),
         }

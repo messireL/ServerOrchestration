@@ -335,6 +335,51 @@
           <section class="panel">
             <div class="panel-header split-header">
               <div>
+                <h2>Планировщик мониторинга</h2>
+                <p>Фоновый runner для ping/SSH/HTTP с настраиваемыми интервалами и таймаутами.</p>
+              </div>
+              <span class="pill pill-info" id="schedulerStateBadge">scheduler: —</span>
+            </div>
+            <form class="form-stack" id="monitorSettingsForm">
+              <div class="checkbox-row">
+                <label class="check-pill"><input type="checkbox" name="scheduler_enabled" /> <span>Включить планировщик</span></label>
+              </div>
+              <div class="field-grid two-cols">
+                <label class="field">
+                  <span>Ping interval, сек</span>
+                  <input type="number" name="ping_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>Ping timeout, сек</span>
+                  <input type="number" name="ping_timeout_seconds" min="1" max="10" required />
+                </label>
+                <label class="field">
+                  <span>SSH interval, сек</span>
+                  <input type="number" name="ssh_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>SSH timeout, сек</span>
+                  <input type="number" name="tcp_timeout_seconds" min="1" max="15" required />
+                </label>
+                <label class="field">
+                  <span>HTTP interval, сек</span>
+                  <input type="number" name="http_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>HTTP timeout, сек</span>
+                  <input type="number" name="http_timeout_seconds" min="1" max="30" required />
+                </label>
+              </div>
+              <div class="micro-stats checks-micro-grid scheduler-stats" id="schedulerStats"></div>
+              <div class="form-actions">
+                <button class="btn btn-primary" type="submit" id="monitorSettingsSubmitBtn">Сохранить настройки мониторинга</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header split-header">
+              <div>
                 <h2>Проверки доступности</h2>
                 <p>Ping, доступность SSH-порта и web URL. Позже сюда добавим 3x-ui, подписки и SSL.</p>
               </div>
@@ -367,11 +412,77 @@
               </table>
             </div>
           </section>
+
+          <section class="panel">
+            <div class="panel-header split-header">
+              <div>
+                <h2>История прогонов</h2>
+                <p>Последние результаты scheduler и ручных запусков без просмотра логов контейнера.</p>
+              </div>
+              <span class="pill pill-neutral" id="probeHistoryCountLabel">0 записей</span>
+            </div>
+            <div class="table-shell">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Время</th>
+                    <th>Источник</th>
+                    <th>Probe</th>
+                    <th>Сервер</th>
+                    <th>Результат</th>
+                    <th>Детали</th>
+                    <th>Ошибка</th>
+                  </tr>
+                </thead>
+                <tbody id="probeHistoryRows"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 
       <section class="view" data-view="alerts">
         <div class="content-grid alerts-grid">
+          <section class="panel form-panel">
+            <div class="panel-header split-header">
+              <div>
+                <h2>Правила и доставка уведомлений</h2>
+                <p>Настройка alerting, stale-правила и быстрый тест доставки без ручного ковыряния в контейнере.</p>
+              </div>
+              <button class="btn btn-secondary" type="button" id="alertTestBtn">Отправить тест</button>
+            </div>
+            <form class="form-stack" id="alertSettingsForm">
+              <label class="field field-inline">
+                <span>Включить уведомления</span>
+                <input type="checkbox" name="notifications_enabled" />
+              </label>
+              <label class="field field-inline">
+                <span>Уведомлять о новых alerts</span>
+                <input type="checkbox" name="notify_on_new_alert" />
+              </label>
+              <label class="field field-inline">
+                <span>Уведомлять о resolved alerts</span>
+                <input type="checkbox" name="notify_on_resolved" />
+              </label>
+              <label class="field field-inline">
+                <span>Включить stale-правило</span>
+                <input type="checkbox" name="stale_alert_enabled" />
+              </label>
+              <label class="field">
+                <span>Stale threshold, сек</span>
+                <input type="number" name="stale_after_seconds" min="60" max="86400" step="60" required />
+              </label>
+              <label class="field">
+                <span>Reminder interval, сек</span>
+                <input type="number" name="reminder_interval_seconds" min="60" max="604800" step="60" required />
+              </label>
+              <div class="micro-grid" id="alertChannelStats"></div>
+              <div class="form-actions">
+                <button class="btn btn-primary" type="submit" id="alertSettingsSubmitBtn">Сохранить alerting</button>
+              </div>
+            </form>
+          </section>
+
           <section class="panel">
             <div class="panel-header">
               <div>
@@ -396,6 +507,31 @@
               </table>
             </div>
           </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Журнал доставок</h2>
+                <p>Последние отправки Telegram/email и причины failed/skipped без похода в логи контейнера.</p>
+              </div>
+            </div>
+            <div class="table-shell compact-shell">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Время</th>
+                    <th>Канал</th>
+                    <th>Событие</th>
+                    <th>Сервер / target</th>
+                    <th>Статус</th>
+                    <th>Сообщение</th>
+                    <th>Ошибка</th>
+                  </tr>
+                </thead>
+                <tbody id="alertDeliveryRows"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 
@@ -411,10 +547,11 @@
             <div class="roadmap-list">
               <div class="roadmap-item"><strong>v0.1.17–0.1.21</strong><span>Стабилизация probe-слоя: schema-sync для старых БД, non-root ICMP ping, typed jsonb persistence и выравнивание deploy-артефактов.</span></div>
               <div class="roadmap-item"><strong>v0.1.22</strong><span>Интерфейсная полировка inventory и мониторинга: рабочие секции в sidebar, фильтры серверов, сводка проверок и более читаемые статусы.</span></div>
-              <div class="roadmap-item"><strong>v0.1.23</strong><span>Планировщик проверок и история probe-run: интервалы, фоновый запуск и отдельный журнал последних прогонов.</span></div>
-              <div class="roadmap-item"><strong>v0.1.24</strong><span>Проверки 3x-ui console/subscription и выделенные статусы для панелей и подписок.</span></div>
-              <div class="roadmap-item"><strong>v0.1.25</strong><span>SSL-monitoring: срок действия сертификата, issuer, subject и alerts по порогам истечения.</span></div>
-              <div class="roadmap-item"><strong>v0.1.26+</strong><span>Operational-контур через Ansible: timezone, apt, reboot, maintenance windows, service-user и действия из GUI.</span></div>
+              <div class="roadmap-item"><strong>v0.1.23</strong><span>Функциональный мониторинг: scheduler, интервалы probe-run, история ручных и фоновых прогонов, хранение последних запусков.</span></div>
+              <div class="roadmap-item"><strong>v0.1.24</strong><span>Alerting-контур: правила уведомлений, stale-monitoring, Telegram/email delivery и журнал отправок.</span></div>
+              <div class="roadmap-item"><strong>v0.1.25</strong><span>Проверки 3x-ui console/subscription и выделенные статусы для панелей и подписок.</span></div>
+              <div class="roadmap-item"><strong>v0.1.26</strong><span>SSL-monitoring: срок действия сертификата, issuer, subject и alerts по порогам истечения.</span></div>
+              <div class="roadmap-item"><strong>v0.1.27+</strong><span>Operational-контур через Ansible: timezone, apt, reboot, maintenance windows, service-user и действия из GUI.</span></div>
             </div>
           </section>
         </div>

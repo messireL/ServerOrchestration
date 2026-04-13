@@ -6,6 +6,10 @@ const state = {
   statuses: [],
   alerts: [],
   groupLinks: [],
+  monitorSettings: null,
+  alertSettings: null,
+  alertDeliveries: [],
+  probeHistory: [],
   serverSearch: '',
   groupSearch: '',
   serverFilter: 'all',
@@ -16,7 +20,7 @@ const tabMeta = {
   dashboard: { title: 'Главная', lead: 'Короткая сводка по системе, быстрые действия и проблемные места.' },
   servers: { title: 'Серверы', lead: 'Inventory серверов, редактирование карточек и базовые параметры доступа.' },
   groups: { title: 'Группы', lead: 'Группы и связи сервер ↔ группа для дальнейших проверок и действий.' },
-  checks: { title: 'Проверки', lead: 'Запуск и просмотр результатов проверок доступности и статусов.' },
+  checks: { title: 'Проверки', lead: 'Фоновый мониторинг, ручные проверки и история прогонов по серверам.' },
   alerts: { title: 'Оповещения', lead: 'Активные уведомления без смешивания с inventory и общей сводкой.' },
   roadmap: { title: 'Дальше', lead: 'Ближайшие шаги развития проекта и operational-контур.' },
 };
@@ -29,6 +33,11 @@ const endpoints = {
   groupLinks: '/api/group-links',
   statuses: '/api/status/servers',
   alerts: '/api/alerts',
+  alertSettings: '/api/alerts/settings',
+  alertDeliveries: '/api/alerts/deliveries?limit=80',
+  alertTest: '/api/alerts/test',
+  monitorSettings: '/api/monitor/settings',
+  probeHistory: '/api/probes/history?limit=80',
   pingRun: '/api/probes/ping/run',
   pingDiagnostics: '/api/probes/ping/diagnostics',
   sshRun: '/api/probes/ssh/run',
@@ -173,11 +182,12 @@ function renderSidebarOverview(summary) {
 function renderChecksQuickStats(summary) {
   const quick = $('checksQuickStats');
   if (!quick || !summary) return;
+  const schedulerState = summary.scheduler_enabled ? 'on' : 'off';
   const items = [
     ['Ping OK / fail', `${summary.ping_ok_total} / ${summary.ping_fail_total}`],
     ['SSH OK / fail', `${summary.ssh_ok_total} / ${summary.ssh_fail_total}`],
     ['HTTP OK / fail', `${summary.http_ok_total} / ${summary.http_fail_total}`],
-    ['HTTP unknown', summary.http_unknown_total],
+    ['Scheduler', schedulerState],
     ['Активные alerts', summary.active_alerts_total],
   ];
   quick.innerHTML = items.map(([label, value]) => `
@@ -185,6 +195,120 @@ function renderChecksQuickStats(summary) {
       <div class="label">${safe(label)}</div>
       <strong>${safe(value)}</strong>
     </div>
+  `).join('');
+}
+
+function renderMonitorSettings(settings) {
+  const form = $('monitorSettingsForm');
+  const stats = $('schedulerStats');
+  const badge = $('schedulerStateBadge');
+  if (badge) {
+    badge.textContent = `scheduler: ${settings?.scheduler_enabled ? 'on' : 'off'}`;
+    badge.className = settings?.scheduler_enabled ? 'pill pill-success' : 'pill pill-warning';
+  }
+  if (!form || !settings) return;
+  form.scheduler_enabled.checked = !!settings.scheduler_enabled;
+  form.ping_interval_seconds.value = settings.ping_interval_seconds ?? 60;
+  form.ssh_interval_seconds.value = settings.ssh_interval_seconds ?? 120;
+  form.http_interval_seconds.value = settings.http_interval_seconds ?? 180;
+  form.ping_timeout_seconds.value = settings.ping_timeout_seconds ?? 2;
+  form.tcp_timeout_seconds.value = settings.tcp_timeout_seconds ?? 3;
+  form.http_timeout_seconds.value = settings.http_timeout_seconds ?? 5;
+
+  if (stats) {
+    const items = [
+      ['Последний ping scheduler', formatTs(settings.last_ping_scheduler_run_at)],
+      ['Последний SSH scheduler', formatTs(settings.last_ssh_scheduler_run_at)],
+      ['Последний HTTP scheduler', formatTs(settings.last_http_scheduler_run_at)],
+      ['Ping / SSH / HTTP интервалы', `${settings.ping_interval_seconds}s / ${settings.ssh_interval_seconds}s / ${settings.http_interval_seconds}s`],
+      ['Ping / SSH / HTTP таймауты', `${settings.ping_timeout_seconds}s / ${settings.tcp_timeout_seconds}s / ${settings.http_timeout_seconds}s`],
+    ];
+    stats.innerHTML = items.map(([label, value]) => `
+      <div class="micro-stat">
+        <div class="label">${safe(label)}</div>
+        <strong>${safe(value)}</strong>
+      </div>
+    `).join('');
+  }
+}
+
+function renderProbeHistory(items) {
+  const body = $('probeHistoryRows');
+  if (!body) return;
+  const rows = items || [];
+  setText('probeHistoryCountLabel', `${rows.length} записей`);
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="7" class="empty-cell">История прогонов пока пуста. После scheduler/manual запусков здесь появятся записи.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = rows.map((item) => {
+    const resultHtml = item.ok === true
+      ? '<span class="pill pill-success">OK</span>'
+      : item.ok === false
+        ? '<span class="pill pill-danger">FAIL</span>'
+        : '<span class="pill pill-neutral">unknown</span>';
+    const details = [];
+    if (item.latency_ms !== null && item.latency_ms !== undefined) details.push(`${item.latency_ms} ms`);
+    if (item.status_code !== null && item.status_code !== undefined) details.push(`HTTP ${item.status_code}`);
+    return `
+      <tr>
+        <td>${formatTs(item.started_at)}</td>
+        <td><span class="pill ${item.source === 'scheduler' ? 'pill-info' : 'pill-neutral'}">${safe(item.source)}</span></td>
+        <td>${safe(item.probe_type)}</td>
+        <td><strong>${safe(item.server_name)}</strong><br><span class="code-text">${safe(item.server_host)}</span></td>
+        <td>${resultHtml}</td>
+        <td>${details.length ? safe(details.join(' · ')) : '—'}</td>
+        <td><div class="error-snippet" title="${safe(item.error || '')}">${safe(truncateText(item.error || '—', 120))}</div></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderAlertSettings(settings) {
+  const form = $('alertSettingsForm');
+  const stats = $('alertChannelStats');
+  if (!form || !settings) return;
+  form.notifications_enabled.checked = !!settings.notifications_enabled;
+  form.notify_on_new_alert.checked = !!settings.notify_on_new_alert;
+  form.notify_on_resolved.checked = !!settings.notify_on_resolved;
+  form.stale_alert_enabled.checked = !!settings.stale_alert_enabled;
+  form.stale_after_seconds.value = settings.stale_after_seconds ?? 900;
+  form.reminder_interval_seconds.value = settings.reminder_interval_seconds ?? 3600;
+  if (stats) {
+    const items = [
+      ['Telegram', settings.telegram_configured ? `configured → ${settings.telegram_target || 'chat'}` : 'not configured'],
+      ['Email', settings.email_configured ? `configured → ${settings.email_target || 'mailbox'}` : 'not configured'],
+      ['Stale threshold', `${settings.stale_after_seconds}s`],
+      ['Reminder interval', `${settings.reminder_interval_seconds}s`],
+    ];
+    stats.innerHTML = items.map(([label, value]) => `
+      <div class="micro-stat">
+        <div class="label">${safe(label)}</div>
+        <strong>${safe(value)}</strong>
+      </div>
+    `).join('');
+  }
+}
+
+function renderAlertDeliveries(items) {
+  const body = $('alertDeliveryRows');
+  if (!body) return;
+  const rows = items || [];
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="7" class="empty-cell">Журнал доставок пока пуст. После alert-уведомлений здесь появятся записи.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map((item) => `
+    <tr>
+      <td>${formatTs(item.created_at)}</td>
+      <td><span class="pill pill-neutral">${safe(item.channel)}</span></td>
+      <td>${safe(item.event_type)}</td>
+      <td><strong>${safe(item.server_name_snapshot || 'system')}</strong><br><span class="code-text">${safe(item.server_host_snapshot || item.target || '—')}</span></td>
+      <td>${item.status === 'sent' ? '<span class="pill pill-success">sent</span>' : item.status === 'failed' ? '<span class="pill pill-danger">failed</span>' : '<span class="pill pill-warning">skipped</span>'}</td>
+      <td title="${safe(item.message || '')}">${safe(truncateText(item.message || '—', 70))}</td>
+      <td><div class="error-snippet" title="${safe(item.error || '')}">${safe(truncateText(item.error || '—', 120))}</div></td>
+    </tr>
   `).join('');
 }
 
@@ -272,7 +396,7 @@ function renderAlerts(items) {
           <td><strong>${safe(item.server_name)}</strong><br><span class="code-text">${safe(item.server_host)}</span></td>
           <td>${safe(item.alert_type)}</td>
           <td>${item.severity === 'critical' ? '<span class="pill pill-danger">critical</span>' : '<span class="pill pill-warning">warning</span>'}</td>
-          <td>${safe(item.message)}</td>
+          <td>${safe(item.message)}<div class="muted small-text">notify=${safe(item.notify_count)} · last=${formatTs(item.last_notified_at)}</div></td>
           <td>${formatTs(item.first_seen_at)}</td>
           <td>${formatTs(item.last_seen_at)}</td>
         </tr>
@@ -440,6 +564,10 @@ function refreshUi() {
   renderSidebarOverview(state.summary);
   renderSummary(state.summary);
   renderChecksQuickStats(state.summary);
+  renderMonitorSettings(state.monitorSettings);
+  renderAlertSettings(state.alertSettings);
+  renderProbeHistory(state.probeHistory || []);
+  renderAlertDeliveries(state.alertDeliveries || []);
   renderDashboardServers(state.statuses || []);
   renderAlerts(state.alerts || []);
   renderServersTable(state.servers || [], state.statuses || []);
@@ -452,7 +580,7 @@ function refreshUi() {
 }
 
 async function loadAll() {
-  const [version, summary, servers, groups, statuses, alerts, groupLinks] = await Promise.all([
+  const [version, summary, servers, groups, statuses, alerts, groupLinks, monitorSettings, alertSettings, alertDeliveries, probeHistory] = await Promise.all([
     fetchJson(endpoints.version),
     fetchJson(endpoints.summary),
     fetchJson(endpoints.servers),
@@ -460,6 +588,10 @@ async function loadAll() {
     fetchJson(endpoints.statuses),
     fetchJson(endpoints.alerts),
     fetchJson(endpoints.groupLinks),
+    fetchJson(endpoints.monitorSettings),
+    fetchJson(endpoints.alertSettings),
+    fetchJson(endpoints.alertDeliveries),
+    fetchJson(endpoints.probeHistory),
   ]);
   state.version = version;
   state.summary = summary;
@@ -468,6 +600,10 @@ async function loadAll() {
   state.statuses = statuses;
   state.alerts = alerts;
   state.groupLinks = groupLinks;
+  state.monitorSettings = monitorSettings;
+  state.alertSettings = alertSettings;
+  state.alertDeliveries = alertDeliveries;
+  state.probeHistory = probeHistory;
   state.lastLoadedAt = new Date().toISOString();
   refreshUi();
 }
@@ -697,6 +833,84 @@ async function runAllChecks() {
   }
 }
 
+async function handleMonitorSettingsSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = {
+    scheduler_enabled: form.scheduler_enabled.checked,
+    ping_interval_seconds: Number(form.ping_interval_seconds.value || 60),
+    ssh_interval_seconds: Number(form.ssh_interval_seconds.value || 120),
+    http_interval_seconds: Number(form.http_interval_seconds.value || 180),
+    ping_timeout_seconds: Number(form.ping_timeout_seconds.value || 2),
+    tcp_timeout_seconds: Number(form.tcp_timeout_seconds.value || 3),
+    http_timeout_seconds: Number(form.http_timeout_seconds.value || 5),
+  };
+  const submitBtn = $('monitorSettingsSubmitBtn');
+  if (submitBtn) submitBtn.disabled = true;
+  try {
+    const result = await fetchJson(endpoints.monitorSettings, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    state.monitorSettings = result;
+    renderMonitorSettings(state.monitorSettings);
+    showMessage('success', `Настройки мониторинга сохранены. Планировщик ${result.scheduler_enabled ? 'включён' : 'выключен'}.`);
+    await loadAll();
+    setTab('checks');
+  } catch (error) {
+    showMessage('error', `Не удалось сохранить настройки мониторинга: ${error.message}`);
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function handleAlertSettingsSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const payload = {
+    notifications_enabled: form.notifications_enabled.checked,
+    notify_on_new_alert: form.notify_on_new_alert.checked,
+    notify_on_resolved: form.notify_on_resolved.checked,
+    stale_alert_enabled: form.stale_alert_enabled.checked,
+    stale_after_seconds: Number(form.stale_after_seconds.value || 900),
+    reminder_interval_seconds: Number(form.reminder_interval_seconds.value || 3600),
+  };
+  const submitBtn = $('alertSettingsSubmitBtn');
+  if (submitBtn) submitBtn.disabled = true;
+  try {
+    const result = await fetchJson(endpoints.alertSettings, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    state.alertSettings = result;
+    renderAlertSettings(result);
+    showMessage('success', `Настройки alerting сохранены. Уведомления ${result.notifications_enabled ? 'включены' : 'выключены'}.`);
+    await loadAll();
+    setTab('alerts');
+  } catch (error) {
+    showMessage('error', `Не удалось сохранить настройки alerting: ${error.message}`);
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function sendTestAlert() {
+  const btn = $('alertTestBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await fetchJson(endpoints.alertTest, { method: 'POST' });
+    showMessage(result.sent > 0 ? 'success' : 'warning', `Тестовое уведомление: sent=${result.sent || 0}, failed=${result.failed || 0}, skipped=${result.skipped || 0}`);
+    await loadAll();
+    setTab('alerts');
+  } catch (error) {
+    showMessage('error', `Не удалось отправить тестовое уведомление: ${error.message}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function handleActionClick(event) {
   const btn = event.target.closest('button[data-action]');
   if (!btn) return;
@@ -761,6 +975,9 @@ function wire() {
   $('serverForm')?.addEventListener('submit', handleServerSubmit);
   $('groupForm')?.addEventListener('submit', handleGroupSubmit);
   $('attachForm')?.addEventListener('submit', handleAttachSubmit);
+  $('monitorSettingsForm')?.addEventListener('submit', handleMonitorSettingsSubmit);
+  $('alertSettingsForm')?.addEventListener('submit', handleAlertSettingsSubmit);
+  $('alertTestBtn')?.addEventListener('click', sendTestAlert);
   $('serverCancelBtn')?.addEventListener('click', resetServerForm);
   $('groupCancelBtn')?.addEventListener('click', resetGroupForm);
   $('serverSearchInput')?.addEventListener('input', (e) => { state.serverSearch = e.target.value.trim().toLowerCase(); refreshUi(); });
