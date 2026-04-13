@@ -23,10 +23,11 @@
 - `0.1.18` — ping endpoint перестал валиться `500`, но сам ICMP ping на стенде ещё не выполнялся корректно.
 
 Текущий релиз в работе:
-- `0.1.20`
+- `0.1.21`
 - hotfix записи результатов probe-проверок в PostgreSQL;
 - исправлена передача `summary_json` в `server_status` через typed `jsonb`, чтобы PostgreSQL не падал на `could not determine data type of parameter $7` при `NULL`;
 - фикс затрагивает `ping`, `SSH` и `HTTP`, чтобы та же мина не рванула позже в соседнем endpoint;
+- исправлен version drift в deploy-артефактах (`Dockerfile`, `docker-compose.local.yml`, `docker-compose.portainer.yml`), чтобы Portainer/GHCR действительно брали текущий релиз;
 - диагностика ping и `NET_RAW` из `0.1.19` сохранены;
 - пояснение по Portainer оставлено: новые task/container имена при redeploy — нормальная механика, а старые stopped-экземпляры надо периодически чистить prune.
 

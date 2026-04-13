@@ -10,7 +10,7 @@
 - Быстрые проверки (`ping`, `SSH`, `HTTP/HTTPS`, затем 3x-ui console/subscription) идут отдельным probe-слоем, не через Ansible.
 - Ansible используется как исполнительный слой для операций изменения: apt, timezone, reboot, 3x-ui update/restart, сбор журналов и т.п.
 
-## Актуальное уточнение v0.1.20
+## Актуальное уточнение v0.1.21
 - inventory сервера хранит `web_url` и флаг `has_http_monitoring`;
 - probe-слой умеет:
   - ICMP ping;

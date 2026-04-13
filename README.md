@@ -11,9 +11,12 @@
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.20`
+- Версия: `0.1.21`
 
-## Что входит в v0.1.20
+## Что входит в v0.1.21
+
+- Исправлен version drift в deploy-артефактах: Dockerfile, local compose и Portainer compose теперь ссылаются на `0.1.21`, а не на `0.1.19`.
+- Сохранён hotfix `0.1.20` по typed `summary_json`/`jsonb` persistence для результатов ping/SSH/HTTP probe.
 - backend API на FastAPI;
 - PostgreSQL;
 - inventory, `server_status` и `alerts`;
