@@ -11,28 +11,19 @@
 - Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
 
 ## Текущий релиз
-- Версия: `0.1.21`
+- Версия: `0.1.22`
 
-## Что входит в v0.1.21
+## Что входит в v0.1.22
 
-- Исправлен version drift в deploy-артефактах: Dockerfile, local compose и Portainer compose теперь ссылаются на `0.1.21`, а не на `0.1.19`.
-- Сохранён hotfix `0.1.20` по typed `summary_json`/`jsonb` persistence для результатов ping/SSH/HTTP probe.
-- backend API на FastAPI;
-- PostgreSQL;
-- inventory, `server_status` и `alerts`;
-- CRUD по серверам и группам через web UI;
-- ping probe;
-- проверка доступности SSH-порта;
-- проверка HTTP/HTTPS по `web_url` с browser-like headers;
-- schema-sync legacy-колонок `server_status` и `servers`;
-- ping / ssh / http probe-endpoints не валят API `500` из-за проблем записи статуса;
-- контейнер backend подготовлен для non-root ICMP ping: в image выставляется `setcap` для `ping`, а в compose добавлен `cap_add: NET_RAW`;
-- добавлена ping diagnostics endpoint `/api/probes/ping/diagnostics`;
-- исправлена запись результатов ping/ssh/http в `server_status.summary_json`: теперь JSON передаётся как typed `jsonb`, и PostgreSQL больше не падает на `could not determine data type of parameter` при `NULL`-значениях;
-- alerts по `ping_down`, `ssh_down`, `http_down`;
-- web UI с левым меню, светлой и тёмной темой;
-- Portainer stack из Git-репозитория;
-- GitHub Actions workflow для публикации backend image в GHCR.
+- подтверждён рабочий probe-контур после hotfix-линейки `0.1.17–0.1.21`;
+- интерфейс inventory и мониторинга стал более структурированным:
+  - в sidebar появились рабочие секции и оперативная сводка;
+  - на экране серверов добавлены быстрые фильтры;
+  - статусы ping/SSH/HTTP стали читаться как отдельные бейджи;
+  - в списке серверов теперь сразу видно `last_check` и короткий `last_error`;
+  - на экране проверок добавлена отдельная summary-панель по результатам probe;
+- дорожная карта в UI выровнена и больше не путает версии;
+- backend API, schema-sync, typed `jsonb` persistence и non-root ping из `0.1.21` сохранены без изменений.
 
 ## Что уже можно делать через веб-интерфейс
 - смотреть summary и dashboard;
@@ -40,6 +31,7 @@
 - создавать, редактировать и удалять группы;
 - создавать и удалять связи сервер ↔ группа;
 - запускать ping / SSH / HTTP/HTTPS проверки;
+- фильтровать inventory по состоянию и типу мониторинга;
 - смотреть alerts и статусы по разделам;
 - смотреть ping diagnostics через API.
 

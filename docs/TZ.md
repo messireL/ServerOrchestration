@@ -22,23 +22,22 @@
 - связи сервер ↔ группа должны быть обозримыми и управляемыми через GUI;
 - интерфейс должен поддерживать светлую и тёмную тему.
 
-## Актуализировано для v0.1.21
+## Актуализировано для v0.1.22
 - сервер inventory поддерживает поля `host`, `ssh_port`, `ssh_user`, `web_url` и флаги мониторинга;
 - `web_url` используется для проверки HTTP/HTTPS доступности;
 - HTTP/HTTPS probe работает в browser-like режиме и не равен будущей проверке 3x-ui subscription;
 - должны поддерживаться проверки: ping, SSH-порт, HTTP/HTTPS, затем 3x-ui, SSL, timezone, apt, reboot, журналы;
-- alerts по недоступности должны создаваться отдельно по типам `ping_down`, `ssh_down`, `http_down`;
+- alerts по недоступности создаются отдельно по типам `ping_down`, `ssh_down`, `http_down`;
 - probe-слой не должен ронять весь API endpoint 500-кой, если проблема возникла в записи результата в БД;
-- успешный ping должен сохранять и показывать latency/time в таблицах;
-- для non-root контейнера ICMP ping должен быть обеспечен через `setcap` на бинарнике и `NET_RAW` в runtime-конфигурации;
-- UI при failed ping обязан показывать явную причину, а не только общий счётчик ошибок.
+- успешный ping сохраняет и показывает latency/time в таблицах;
+- для non-root контейнера ICMP ping обеспечен через `setcap` на бинарнике и `NET_RAW` в runtime-конфигурации;
+- UI при failed ping показывает явную причину, а не только общий счётчик ошибок;
+- inventory-экран должен поддерживать быстрые фильтры по рабочему состоянию сервера;
+- оператор без открытия карточки должен видеть `last_check`, краткий `last_error` и базовые статусы ping/SSH/HTTP.
 
 ## Ближайшие функциональные блоки
-- `0.1.20` — hotfix typed `summary_json`/`jsonb` persistence для результатов probe;
-- `0.1.21` — version-sync deploy-артефактов, чтобы GHCR/Portainer действительно тянули текущий релиз;
-- `0.1.22` — переработка интерфейса: левое меню, отдельные разделы, менее перегруженный dashboard;
-- `0.1.21` — inventory polish: фильтры, бейджи проверок, `last_check`/`last_error`;
-- `0.1.22` — scheduler и история проверок;
-- `0.1.23` — 3x-ui console/subscription checks;
-- `0.1.24` — SSL checks;
+- `0.1.22` — UI polish inventory и мониторинга: sidebar-секции, фильтры серверов, summary-панель проверок, более читаемые статусы;
+- `0.1.23` — scheduler и история проверок;
+- `0.1.24` — 3x-ui console/subscription checks;
+- `0.1.25` — SSL checks;
 - затем timezone checks, apt update/upgrade/dist-upgrade через Ansible, reboot, maintenance windows, UFW/SSH logs и уведомления email/Telegram.

@@ -8,6 +8,8 @@ const state = {
   groupLinks: [],
   serverSearch: '',
   groupSearch: '',
+  serverFilter: 'all',
+  lastLoadedAt: null,
 };
 
 const tabMeta = {
@@ -56,6 +58,41 @@ function setText(id, value) {
 function formatLatency(value) {
   if (value === null || value === undefined || value === '') return '—';
   return `${safe(value)} ms`;
+}
+
+function truncateText(value, max = 96) {
+  const text = value == null ? '' : String(value);
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1)}…`;
+}
+
+function statusPillHtml(label, flag, disabledLabel = null) {
+  if (disabledLabel && flag === null) {
+    return `<span class="status-pill disabled">${safe(label)}: ${safe(disabledLabel)}</span>`;
+  }
+  const cls = flag === true ? 'ok' : flag === false ? 'fail' : 'unknown';
+  const value = flag === true ? 'OK' : flag === false ? 'FAIL' : 'unknown';
+  return `<span class="status-pill ${cls}">${safe(label)}: ${value}</span>`;
+}
+
+function serverHasIssues(item) {
+  return item.ping_ok === false || item.ssh_ok === false || item.http_ok === false || Number(item.active_alerts || 0) > 0;
+}
+
+function applyServerFilter(items) {
+  const list = items || [];
+  switch (state.serverFilter) {
+    case 'enabled':
+      return list.filter((item) => item.is_enabled);
+    case 'issues':
+      return list.filter((item) => serverHasIssues(item));
+    case 'alerts':
+      return list.filter((item) => Number(item.active_alerts || 0) > 0);
+    case 'http':
+      return list.filter((item) => item.has_http_monitoring);
+    default:
+      return list;
+  }
 }
 
 function showMessage(type, text) {
@@ -123,6 +160,32 @@ function renderMeta(meta) {
   setText('brandName', meta.display_name || 'Система мониторинга');
   setText('pageEyebrow', meta.display_name || 'Система мониторинга');
   if (meta.display_name) document.title = meta.display_name;
+}
+
+function renderSidebarOverview(summary) {
+  if (!summary) return;
+  setText('sidebarEnabledValue', summary.servers_enabled ?? '—');
+  setText('sidebarAlertsValue', summary.active_alerts_total ?? '—');
+  setText('sidebarPingValue', summary.ping_ok_total ?? '—');
+  setText('sidebarUpdatedValue', state.lastLoadedAt ? formatTs(state.lastLoadedAt) : '—');
+}
+
+function renderChecksQuickStats(summary) {
+  const quick = $('checksQuickStats');
+  if (!quick || !summary) return;
+  const items = [
+    ['Ping OK / fail', `${summary.ping_ok_total} / ${summary.ping_fail_total}`],
+    ['SSH OK / fail', `${summary.ssh_ok_total} / ${summary.ssh_fail_total}`],
+    ['HTTP OK / fail', `${summary.http_ok_total} / ${summary.http_fail_total}`],
+    ['HTTP unknown', summary.http_unknown_total],
+    ['Активные alerts', summary.active_alerts_total],
+  ];
+  quick.innerHTML = items.map(([label, value]) => `
+    <div class="micro-stat">
+      <div class="label">${safe(label)}</div>
+      <strong>${safe(value)}</strong>
+    </div>
+  `).join('');
 }
 
 function renderSummary(summary) {
@@ -238,7 +301,7 @@ function renderServersTable(servers, statuses) {
   const body = $('serversListRows');
   if (!body) return;
   const statusMap = new Map((statuses || []).map((s) => [String(s.id), s]));
-  const filtered = (servers || []).filter((item) => serverMatches(item, state.serverSearch));
+  const filtered = applyServerFilter((servers || []).filter((item) => serverMatches(item, state.serverSearch)));
   setText('serversCountLabel', `${filtered.length} серверов`);
 
   if (!filtered.length) {
@@ -251,6 +314,8 @@ function renderServersTable(servers, statuses) {
     const groups = (item.groups || []).length
       ? `<div class="inline-pills">${item.groups.map((g) => `<span class="pill pill-neutral">${safe(g)}</span>`).join('')}</div>`
       : '<span class="muted">—</span>';
+    const errorSnippet = st.last_error ? `<div class="error-snippet" title="${safe(st.last_error)}">${safe(truncateText(st.last_error, 92))}</div>` : '<div class="muted small-text">Ошибок не зафиксировано</div>';
+    const webText = item.web_url ? safe(item.web_url) : '—';
     return `
       <tr>
         <td>
@@ -260,10 +325,17 @@ function renderServersTable(servers, statuses) {
         <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
         <td>${groups}</td>
         <td>
-          <div class="status-line">${statusHtml(st.ping_ok)} ${statusHtml(st.ssh_ok)} ${statusHtml(st.http_ok)}</div>
-          <div class="muted small-text">web: ${safe(item.web_url)}</div>
+          <div class="status-pill-row">
+            ${statusPillHtml('Ping', st.ping_ok)}
+            ${statusPillHtml('SSH', st.ssh_ok)}
+            ${statusPillHtml('HTTP', item.has_http_monitoring ? st.http_ok : null, item.has_http_monitoring ? null : 'off')}
+          </div>
+          <div class="muted small-text">web: ${webText}</div>
         </td>
-        <td>${formatTs(st.last_check_at)}</td>
+        <td>
+          <div>${formatTs(st.last_check_at)}</div>
+          ${errorSnippet}
+        </td>
         <td>
           <div class="row-actions">
             <button class="btn btn-secondary" type="button" data-action="edit-server" data-id="${item.id}">Изменить</button>
@@ -326,7 +398,7 @@ function renderGroupLinks(links) {
 function renderStatuses(items) {
   const body = $('statusRows');
   if (!body) return;
-  const filtered = (items || []).filter((item) => serverMatches(item, state.serverSearch));
+  const filtered = applyServerFilter((items || []).filter((item) => serverMatches(item, state.serverSearch)));
   if (!filtered.length) {
     body.innerHTML = '<tr><td colspan="12" class="empty-cell">Серверы не найдены. Добавьте их в inventory.</td></tr>';
     return;
@@ -334,13 +406,13 @@ function renderStatuses(items) {
   body.innerHTML = filtered.map((item) => `
     <tr>
       <td>${safe(item.id)}</td>
-      <td><strong>${safe(item.name)}</strong></td>
+      <td><strong>${safe(item.name)}</strong><div class="muted small-text">${(item.groups || []).map((g) => safe(g)).join(', ') || 'Без группы'}</div></td>
       <td class="code-text">${safe(item.host)}</td>
       <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
       <td class="code-text">${safe(item.web_url)}</td>
       <td>${statusHtml(item.ping_ok)}</td>
       <td>${statusHtml(item.ssh_ok)}</td>
-      <td>${statusHtml(item.http_ok)}${item.http_status_code ? `<div class="muted small-text">HTTP ${safe(item.http_status_code)}</div>` : ''}</td>
+      <td>${item.has_http_monitoring ? statusHtml(item.http_ok) : '<span class="status-dot unknown">off</span>'}${item.http_status_code ? `<div class="muted small-text">HTTP ${safe(item.http_status_code)}</div>` : ''}</td>
       <td>
         <div class="muted small-text">ping: ${formatLatency(item.ping_latency_ms)}</div>
         <div class="muted small-text">ssh: ${formatLatency(item.ssh_latency_ms)}</div>
@@ -348,7 +420,7 @@ function renderStatuses(items) {
       </td>
       <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
       <td>${formatTs(item.last_check_at)}</td>
-      <td>${safe(item.last_error)}</td>
+      <td title="${safe(item.last_error)}">${safe(truncateText(item.last_error || '—', 110))}</td>
     </tr>
   `).join('');
 }
@@ -365,13 +437,16 @@ function populateSelect(id, items, emptyText, labelFn) {
 
 function refreshUi() {
   renderMeta(state.version);
+  renderSidebarOverview(state.summary);
   renderSummary(state.summary);
+  renderChecksQuickStats(state.summary);
   renderDashboardServers(state.statuses || []);
   renderAlerts(state.alerts || []);
   renderServersTable(state.servers || [], state.statuses || []);
   renderGroups(state.groups || []);
   renderGroupLinks(state.groupLinks || []);
   renderStatuses(state.statuses || []);
+  qa('#serverFilterBar .filter-chip').forEach((node) => node.classList.toggle('active', node.dataset.filter === state.serverFilter));
   populateSelect('attachGroupSelect', state.groups || [], 'Сначала создайте группу', (g) => `${g.name} (#${g.id})`);
   populateSelect('attachServerSelect', state.servers || [], 'Сначала добавьте сервер', (s) => `${s.name} (${s.host})`);
 }
@@ -393,6 +468,7 @@ async function loadAll() {
   state.statuses = statuses;
   state.alerts = alerts;
   state.groupLinks = groupLinks;
+  state.lastLoadedAt = new Date().toISOString();
   refreshUi();
 }
 
@@ -689,6 +765,10 @@ function wire() {
   $('groupCancelBtn')?.addEventListener('click', resetGroupForm);
   $('serverSearchInput')?.addEventListener('input', (e) => { state.serverSearch = e.target.value.trim().toLowerCase(); refreshUi(); });
   $('groupSearchInput')?.addEventListener('input', (e) => { state.groupSearch = e.target.value.trim().toLowerCase(); refreshUi(); });
+  qa('#serverFilterBar .filter-chip').forEach((node) => node.addEventListener('click', () => {
+    state.serverFilter = node.dataset.filter || 'all';
+    refreshUi();
+  }));
   document.body.addEventListener('click', handleActionClick);
 }
 

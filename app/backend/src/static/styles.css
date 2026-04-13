@@ -102,6 +102,15 @@ button { cursor: pointer; }
   gap: 6px;
 }
 
+.nav-section-title {
+  margin: 10px 10px 4px;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
 .nav-link {
   display: flex;
   align-items: center;
@@ -411,6 +420,30 @@ input:focus, textarea:focus, select:focus {
 textarea { resize: vertical; }
 .search-field { max-width: 420px; margin-bottom: 14px; }
 
+.filter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.filter-chip {
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 9px 12px;
+  font-weight: 700;
+}
+.filter-chip:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.filter-chip.active {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 25%, var(--line));
+}
+
 .checkbox-row {
   display: flex;
   flex-wrap: wrap;
@@ -472,6 +505,41 @@ textarea { resize: vertical; }
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.status-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.status-pill.ok { border-color: #bde6cf; background: var(--success-soft); color: #157450; }
+.status-pill.fail { border-color: #f0c9c9; background: var(--danger-soft); color: #973636; }
+.status-pill.unknown { border-color: var(--line); background: var(--surface-alt); color: var(--muted); }
+.status-pill.disabled { border-color: #dadfe7; background: #f4f7fb; color: #7b879b; }
+.error-snippet {
+  margin-top: 6px;
+  color: var(--muted);
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.section-note {
+  color: var(--muted);
+  font-size: 13px;
 }
 .row-actions {
   display: flex;
@@ -600,4 +668,16 @@ textarea { resize: vertical; }
 
 .two-cols-span {
   grid-column: 1 / -1;
+}
+
+
+.checks-micro-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+
+@media (max-width: 1600px) {
+  .checks-micro-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
