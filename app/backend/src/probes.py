@@ -1,4 +1,5 @@
 import base64
+import ipaddress
 import re
 import shutil
 import socket
@@ -200,14 +201,66 @@ def _decode_certificate(binary_cert: bytes) -> dict:
         return ssl._ssl._test_decode_cert(fh.name)
 
 
+def _dns_pattern_matches(pattern: str, hostname: str) -> bool:
+    pattern = (pattern or '').strip().lower()
+    hostname = (hostname or '').strip().lower()
+    if not pattern or not hostname:
+        return False
+    if '*' not in pattern:
+        return pattern == hostname
+    if not pattern.startswith('*.'):
+        return False
+    suffix = pattern[1:]
+    if not hostname.endswith(suffix):
+        return False
+    host_labels = hostname.split('.')
+    suffix_labels = suffix.lstrip('.').split('.')
+    return len(host_labels) == len(suffix_labels) + 1
+
+
 def _hostname_matches(cert_dict: dict, hostname: str) -> tuple[bool, str | None]:
     if not hostname:
         return True, None
+
+    normalized_host = hostname.strip()
     try:
-        ssl.match_hostname(cert_dict, hostname)
-        return True, None
-    except Exception as exc:
-        return False, str(exc)
+        host_ip = ipaddress.ip_address(normalized_host)
+    except ValueError:
+        host_ip = None
+
+    san_entries = cert_dict.get('subjectAltName') or ()
+    dns_names: list[str] = []
+    ip_names: list[str] = []
+    for kind, value in san_entries:
+        if not value:
+            continue
+        kind_normalized = str(kind).strip().lower()
+        if kind_normalized == 'dns':
+            dns_names.append(str(value).strip())
+        elif kind_normalized in {'ip address', 'ip'}:
+            ip_names.append(str(value).strip())
+
+    common_name = _name_value(cert_dict.get('subject') or (), 'commonName')
+    if common_name and not dns_names and not ip_names:
+        dns_names.append(common_name)
+
+    if host_ip is not None:
+        for candidate in ip_names + dns_names:
+            try:
+                if ipaddress.ip_address(candidate.strip()) == host_ip:
+                    return True, None
+            except ValueError:
+                if candidate.strip().lower() == normalized_host.lower():
+                    return True, None
+        expected = ', '.join(ip_names + dns_names) or 'SAN/CN missing'
+        return False, f'certificate does not match IP {normalized_host} (expected: {expected})'
+
+    for candidate in dns_names:
+        if _dns_pattern_matches(candidate, normalized_host):
+            return True, None
+
+    expected = ', '.join(dns_names) or common_name or 'SAN/CN missing'
+    return False, f'certificate does not match hostname {normalized_host} (expected: {expected})'
 
 
 def _looks_like_subscription_payload(text: str) -> tuple[bool, int]:
