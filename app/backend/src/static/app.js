@@ -147,6 +147,30 @@ function statusHtml(flag) {
   return '<span class="status-dot unknown">unknown</span>';
 }
 
+function probeBadgeHtml(label, flag, options = {}) {
+  const { disabled = false, detail = '' } = options;
+  if (disabled) {
+    return `<span class="status-pill disabled">${safe(label)}: off</span>`;
+  }
+  const cls = flag === true ? 'ok' : flag === false ? 'fail' : 'unknown';
+  const value = flag === true ? 'OK' : flag === false ? 'FAIL' : 'unknown';
+  const suffix = detail ? ` · ${safe(detail)}` : '';
+  return `<span class="status-pill ${cls}">${safe(label)}: ${value}${suffix}</span>`;
+}
+
+function latencyBadgeHtml(label, value) {
+  return `<span class="metric-pill">${safe(label)}: ${safe(formatLatency(value))}</span>`;
+}
+
+function compactUrlHtml(value, emptyLabel = '—') {
+  if (!value) return `<span class="muted small-text">${safe(emptyLabel)}</span>`;
+  return `<span class="code-text url-wrap" title="${safe(value)}">${safe(value)}</span>`;
+}
+
+function errorCellHtml(value) {
+  if (!value) return '<div class="error-snippet error-snippet-soft">Ошибок не зафиксировано</div>';
+  return `<div class="error-snippet error-snippet-multiline" title="${safe(value)}">${safe(value)}</div>`;
+}
 
 function applyTheme(theme) {
   const normalized = theme === 'dark' ? 'dark' : 'light';
@@ -558,32 +582,40 @@ function renderStatuses(items) {
     body.innerHTML = '<tr><td colspan="12" class="empty-cell">Серверы не найдены. Добавьте их в inventory.</td></tr>';
     return;
   }
-  body.innerHTML = filtered.map((item) => `
-    <tr>
-      <td>${safe(item.id)}</td>
-      <td><strong>${safe(item.name)}</strong><div class="muted small-text">${(item.groups || []).map((g) => safe(g)).join(', ') || 'Без группы'}</div></td>
-      <td class="code-text">${safe(item.host)}</td>
-      <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
-      <td class="code-text">${safe(item.web_url)}</td>
-      <td>${statusHtml(item.ping_ok)}</td>
-      <td>${statusHtml(item.ssh_ok)}</td>
-      <td>
-        <div>${item.has_http_monitoring ? statusHtml(item.http_ok) : '<span class="status-dot unknown">off</span>'}${item.http_status_code ? `<div class="muted small-text">HTTP ${safe(item.http_status_code)}</div>` : ''}</div>
-        <div>${item.has_3xui ? statusHtml(item.console_3xui_ok) : '<span class="status-dot unknown">off</span>'}${item.console_3xui_http_status ? `<div class="muted small-text">console HTTP ${safe(item.console_3xui_http_status)}</div>` : '<div class="muted small-text">console —</div>'}</div>
-        <div>${item.has_3xui ? statusHtml(item.subscription_3xui_ok) : '<span class="status-dot unknown">off</span>'}${item.subscription_3xui_http_status ? `<div class="muted small-text">sub HTTP ${safe(item.subscription_3xui_http_status)}</div>` : '<div class="muted small-text">sub —</div>'}</div>
-      </td>
-      <td>
-        <div class="muted small-text">ping: ${formatLatency(item.ping_latency_ms)}</div>
-        <div class="muted small-text">ssh: ${formatLatency(item.ssh_latency_ms)}</div>
-        <div class="muted small-text">http: ${formatLatency(item.http_response_ms)}</div>
-        <div class="muted small-text">3x-ui console: ${formatLatency(item.console_3xui_response_ms)}</div>
-        <div class="muted small-text">3x-ui sub: ${formatLatency(item.subscription_3xui_response_ms)}</div>
-      </td>
-      <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
-      <td>${formatTs(item.last_check_at)}</td>
-      <td title="${safe(item.last_error)}">${safe(truncateText(item.last_error || '—', 110))}</td>
-    </tr>
-  `).join('');
+  body.innerHTML = filtered.map((item) => {
+    const groupText = (item.groups || []).map((g) => safe(g)).join(', ') || 'Без группы';
+    const probePills = [
+      probeBadgeHtml('HTTP', item.http_ok, { disabled: !item.has_http_monitoring, detail: item.http_status_code ? `HTTP ${item.http_status_code}` : '' }),
+      probeBadgeHtml('3x-ui console', item.console_3xui_ok, { disabled: !item.has_3xui, detail: item.console_3xui_http_status ? `HTTP ${item.console_3xui_http_status}` : '' }),
+      probeBadgeHtml('3x-ui sub', item.subscription_3xui_ok, { disabled: !item.has_3xui, detail: item.subscription_3xui_http_status ? `HTTP ${item.subscription_3xui_http_status}` : '' }),
+      probeBadgeHtml('SSL', item.ssl_ok, { disabled: !item.has_ssl_monitoring })
+    ].join('');
+
+    const latencyPills = [
+      latencyBadgeHtml('ping', item.ping_latency_ms),
+      latencyBadgeHtml('ssh', item.ssh_latency_ms),
+      latencyBadgeHtml('http', item.http_response_ms),
+      latencyBadgeHtml('3x-ui console', item.console_3xui_response_ms),
+      latencyBadgeHtml('3x-ui sub', item.subscription_3xui_response_ms)
+    ].join('');
+
+    return `
+      <tr>
+        <td>${safe(item.id)}</td>
+        <td><strong>${safe(item.name)}</strong><div class="muted small-text clamp-2">${groupText}</div></td>
+        <td><span class="code-text">${safe(item.host)}</span></td>
+        <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
+        <td>${compactUrlHtml(item.web_url, 'не задан')}</td>
+        <td>${statusHtml(item.ping_ok)}</td>
+        <td>${statusHtml(item.ssh_ok)}</td>
+        <td><div class="status-badge-stack">${probePills}</div></td>
+        <td><div class="metric-pill-stack">${latencyPills}</div></td>
+        <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
+        <td><span class="date-chip">${formatTs(item.last_check_at)}</span></td>
+        <td>${errorCellHtml(item.last_error)}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function populateSelect(id, items, emptyText, labelFn) {
