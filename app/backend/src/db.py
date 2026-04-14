@@ -48,6 +48,8 @@ def init_db() -> None:
                     ssh_port INTEGER NOT NULL DEFAULT 22,
                     ssh_user TEXT NOT NULL DEFAULT 'srvops',
                     web_url TEXT,
+                    console_3xui_url TEXT,
+                    subscription_3xui_url TEXT,
                     description TEXT,
                     is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
                     has_3xui BOOLEAN NOT NULL DEFAULT FALSE,
@@ -60,6 +62,8 @@ def init_db() -> None:
             )
             cur.execute("ALTER TABLE servers ALTER COLUMN ssh_user SET DEFAULT 'srvops';")
             cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS web_url TEXT;")
+            cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS console_3xui_url TEXT;")
+            cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS subscription_3xui_url TEXT;")
             cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS has_3xui BOOLEAN NOT NULL DEFAULT FALSE;")
             cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS has_ssl_monitoring BOOLEAN NOT NULL DEFAULT FALSE;")
             cur.execute("ALTER TABLE servers ADD COLUMN IF NOT EXISTS has_http_monitoring BOOLEAN NOT NULL DEFAULT FALSE;")
@@ -87,7 +91,11 @@ def init_db() -> None:
                     http_status_code INTEGER,
                     http_response_ms INTEGER,
                     console_3xui_ok BOOLEAN,
+                    console_3xui_http_status INTEGER,
+                    console_3xui_response_ms INTEGER,
                     subscription_3xui_ok BOOLEAN,
+                    subscription_3xui_http_status INTEGER,
+                    subscription_3xui_response_ms INTEGER,
                     ssl_ok BOOLEAN,
                     reboot_required BOOLEAN,
                     last_error TEXT,
@@ -104,7 +112,11 @@ def init_db() -> None:
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS http_status_code INTEGER;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS http_response_ms INTEGER;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS console_3xui_ok BOOLEAN;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS console_3xui_http_status INTEGER;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS console_3xui_response_ms INTEGER;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS subscription_3xui_ok BOOLEAN;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS subscription_3xui_http_status INTEGER;")
+            cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS subscription_3xui_response_ms INTEGER;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS ssl_ok BOOLEAN;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS reboot_required BOOLEAN;")
             cur.execute("ALTER TABLE server_status ADD COLUMN IF NOT EXISTS last_error TEXT;")
@@ -205,12 +217,15 @@ def init_db() -> None:
                     ping_interval_seconds INTEGER NOT NULL DEFAULT 60,
                     ssh_interval_seconds INTEGER NOT NULL DEFAULT 120,
                     http_interval_seconds INTEGER NOT NULL DEFAULT 180,
+                    xui_interval_seconds INTEGER NOT NULL DEFAULT 240,
                     ping_timeout_seconds INTEGER NOT NULL DEFAULT 2,
                     tcp_timeout_seconds INTEGER NOT NULL DEFAULT 3,
                     http_timeout_seconds INTEGER NOT NULL DEFAULT 5,
+                    xui_timeout_seconds INTEGER NOT NULL DEFAULT 5,
                     last_ping_scheduler_run_at TIMESTAMPTZ,
                     last_ssh_scheduler_run_at TIMESTAMPTZ,
                     last_http_scheduler_run_at TIMESTAMPTZ,
+                    last_xui_scheduler_run_at TIMESTAMPTZ,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
@@ -220,12 +235,15 @@ def init_db() -> None:
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ping_interval_seconds INTEGER NOT NULL DEFAULT 60;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ssh_interval_seconds INTEGER NOT NULL DEFAULT 120;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS http_interval_seconds INTEGER NOT NULL DEFAULT 180;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS xui_interval_seconds INTEGER NOT NULL DEFAULT 240;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ping_timeout_seconds INTEGER NOT NULL DEFAULT 2;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS tcp_timeout_seconds INTEGER NOT NULL DEFAULT 3;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS http_timeout_seconds INTEGER NOT NULL DEFAULT 5;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS xui_timeout_seconds INTEGER NOT NULL DEFAULT 5;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_ping_scheduler_run_at TIMESTAMPTZ;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_ssh_scheduler_run_at TIMESTAMPTZ;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_http_scheduler_run_at TIMESTAMPTZ;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_xui_scheduler_run_at TIMESTAMPTZ;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
             cur.execute(
@@ -287,6 +305,8 @@ def list_servers() -> list[dict[str, Any]]:
                     s.ssh_port,
                     s.ssh_user,
                     s.web_url,
+                    s.console_3xui_url,
+                    s.subscription_3xui_url,
                     s.description,
                     s.is_enabled,
                     s.has_3xui,
@@ -302,7 +322,11 @@ def list_servers() -> list[dict[str, Any]]:
                     st.http_status_code,
                     st.http_response_ms,
                     st.console_3xui_ok,
+                    st.console_3xui_http_status,
+                    st.console_3xui_response_ms,
                     st.subscription_3xui_ok,
+                    st.subscription_3xui_http_status,
+                    st.subscription_3xui_response_ms,
                     st.ssl_ok,
                     st.reboot_required,
                     st.last_error,
@@ -327,7 +351,11 @@ def list_servers() -> list[dict[str, Any]]:
                     st.http_status_code,
                     st.http_response_ms,
                     st.console_3xui_ok,
+                    st.console_3xui_http_status,
+                    st.console_3xui_response_ms,
                     st.subscription_3xui_ok,
+                    st.subscription_3xui_http_status,
+                    st.subscription_3xui_response_ms,
                     st.ssl_ok,
                     st.reboot_required,
                     st.last_error,
@@ -363,7 +391,11 @@ def list_server_status() -> list[dict[str, Any]]:
                     st.http_status_code,
                     st.http_response_ms,
                     st.console_3xui_ok,
+                    st.console_3xui_http_status,
+                    st.console_3xui_response_ms,
                     st.subscription_3xui_ok,
+                    st.subscription_3xui_http_status,
+                    st.subscription_3xui_response_ms,
                     st.ssl_ok,
                     st.reboot_required,
                     st.last_error,
@@ -393,7 +425,11 @@ def list_server_status() -> list[dict[str, Any]]:
                     st.http_status_code,
                     st.http_response_ms,
                     st.console_3xui_ok,
+                    st.console_3xui_http_status,
+                    st.console_3xui_response_ms,
                     st.subscription_3xui_ok,
+                    st.subscription_3xui_http_status,
+                    st.subscription_3xui_response_ms,
                     st.ssl_ok,
                     st.reboot_required,
                     st.last_error,
@@ -405,18 +441,18 @@ def list_server_status() -> list[dict[str, Any]]:
             return cur.fetchall()
 
 
-def create_server(name: str, host: str, ssh_port: int, ssh_user: str, web_url: str | None, description: str | None, is_enabled: bool, has_3xui: bool, has_ssl_monitoring: bool, has_http_monitoring: bool):
+def create_server(name: str, host: str, ssh_port: int, ssh_user: str, web_url: str | None, console_3xui_url: str | None, subscription_3xui_url: str | None, description: str | None, is_enabled: bool, has_3xui: bool, has_ssl_monitoring: bool, has_http_monitoring: bool):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO servers
-                    (name, host, ssh_port, ssh_user, web_url, description, is_enabled, has_3xui, has_ssl_monitoring, has_http_monitoring)
+                    (name, host, ssh_port, ssh_user, web_url, console_3xui_url, subscription_3xui_url, description, is_enabled, has_3xui, has_ssl_monitoring, has_http_monitoring)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *;
                 """,
-                (name, host, ssh_port, ssh_user, web_url, description, is_enabled, has_3xui, has_ssl_monitoring, has_http_monitoring),
+                (name, host, ssh_port, ssh_user, web_url, console_3xui_url, subscription_3xui_url, description, is_enabled, has_3xui, has_ssl_monitoring, has_http_monitoring),
             )
             row = cur.fetchone()
             cur.execute("INSERT INTO server_status (server_id) VALUES (%s) ON CONFLICT (server_id) DO NOTHING;", (row["id"],))
@@ -424,7 +460,7 @@ def create_server(name: str, host: str, ssh_port: int, ssh_user: str, web_url: s
         return row
 
 
-def update_server(server_id: int, name: str, host: str, ssh_port: int, ssh_user: str, web_url: str | None, description: str | None, is_enabled: bool, has_3xui: bool, has_ssl_monitoring: bool, has_http_monitoring: bool):
+def update_server(server_id: int, name: str, host: str, ssh_port: int, ssh_user: str, web_url: str | None, console_3xui_url: str | None, subscription_3xui_url: str | None, description: str | None, is_enabled: bool, has_3xui: bool, has_ssl_monitoring: bool, has_http_monitoring: bool):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -436,6 +472,8 @@ def update_server(server_id: int, name: str, host: str, ssh_port: int, ssh_user:
                     ssh_port = %s,
                     ssh_user = %s,
                     web_url = %s,
+                    console_3xui_url = %s,
+                    subscription_3xui_url = %s,
                     description = %s,
                     is_enabled = %s,
                     has_3xui = %s,
@@ -445,7 +483,7 @@ def update_server(server_id: int, name: str, host: str, ssh_port: int, ssh_user:
                 WHERE id = %s
                 RETURNING *;
                 """,
-                (name, host, ssh_port, ssh_user, web_url, description, is_enabled, has_3xui, has_ssl_monitoring, has_http_monitoring, server_id),
+                (name, host, ssh_port, ssh_user, web_url, console_3xui_url, subscription_3xui_url, description, is_enabled, has_3xui, has_ssl_monitoring, has_http_monitoring, server_id),
             )
             row = cur.fetchone()
             if not row:
@@ -629,11 +667,11 @@ def update_ssh_status(server_id: int, ssh_ok: bool | None, ssh_latency_ms: int |
         conn.commit()
 
 
-def update_http_status(server_id: int, http_ok: bool | None, http_status_code: int | None, http_response_ms: int | None, error: str | None):
+def update_http_status(server_id: int, ok: bool | None, response_ms: int | None, status_code: int | None, error: str | None, checked_at = None):
     summary_json = _status_summary_json(
-        http_ok=http_ok,
-        http_status_code=http_status_code,
-        http_response_ms=http_response_ms,
+        http_ok=ok,
+        http_status_code=status_code,
+        http_response_ms=response_ms,
         last_error=error,
         last_probe="http",
     )
@@ -642,7 +680,7 @@ def update_http_status(server_id: int, http_ok: bool | None, http_status_code: i
             cur.execute(
                 """
                 INSERT INTO server_status (server_id, http_ok, http_status_code, http_response_ms, last_error, last_check_at, updated_at, summary_json)
-                VALUES (%s, %s, %s, %s, %s, NOW(), NOW(), %s)
+                VALUES (%s, %s, %s, %s, %s, COALESCE(%s, NOW()), NOW(), %s)
                 ON CONFLICT (server_id)
                 DO UPDATE SET
                     http_ok = EXCLUDED.http_ok,
@@ -653,7 +691,80 @@ def update_http_status(server_id: int, http_ok: bool | None, http_status_code: i
                     updated_at = NOW(),
                     summary_json = server_status.summary_json || EXCLUDED.summary_json;
                 """,
-                (server_id, http_ok, http_status_code, http_response_ms, error, summary_json),
+                (server_id, ok, status_code, response_ms, error, checked_at, summary_json),
+            )
+        conn.commit()
+
+
+def update_3xui_status(
+    server_id: int,
+    *,
+    console_ok: bool | None,
+    console_response_ms: int | None,
+    console_status_code: int | None,
+    console_error: str | None,
+    console_checked_at = None,
+    subscription_ok: bool | None,
+    subscription_response_ms: int | None,
+    subscription_status_code: int | None,
+    subscription_error: str | None,
+    subscription_checked_at = None,
+):
+    last_error = console_error or subscription_error
+    summary_json = _status_summary_json(
+        last_error=last_error,
+        last_probe="xui",
+        console_3xui_ok=console_ok,
+        console_3xui_http_status=console_status_code,
+        console_3xui_response_ms=console_response_ms,
+        subscription_3xui_ok=subscription_ok,
+        subscription_3xui_http_status=subscription_status_code,
+        subscription_3xui_response_ms=subscription_response_ms,
+    )
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO server_status (
+                    server_id,
+                    console_3xui_ok,
+                    console_3xui_http_status,
+                    console_3xui_response_ms,
+                    subscription_3xui_ok,
+                    subscription_3xui_http_status,
+                    subscription_3xui_response_ms,
+                    last_error,
+                    last_check_at,
+                    updated_at,
+                    summary_json
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, %s, NOW()), NOW(), %s)
+                ON CONFLICT (server_id)
+                DO UPDATE SET
+                    console_3xui_ok = EXCLUDED.console_3xui_ok,
+                    console_3xui_http_status = EXCLUDED.console_3xui_http_status,
+                    console_3xui_response_ms = EXCLUDED.console_3xui_response_ms,
+                    subscription_3xui_ok = EXCLUDED.subscription_3xui_ok,
+                    subscription_3xui_http_status = EXCLUDED.subscription_3xui_http_status,
+                    subscription_3xui_response_ms = EXCLUDED.subscription_3xui_response_ms,
+                    last_error = COALESCE(EXCLUDED.last_error, server_status.last_error),
+                    last_check_at = EXCLUDED.last_check_at,
+                    updated_at = NOW(),
+                    summary_json = server_status.summary_json || EXCLUDED.summary_json;
+                """,
+                (
+                    server_id,
+                    console_ok,
+                    console_status_code,
+                    console_response_ms,
+                    subscription_ok,
+                    subscription_status_code,
+                    subscription_response_ms,
+                    last_error,
+                    console_checked_at,
+                    subscription_checked_at,
+                    summary_json,
+                ),
             )
         conn.commit()
 
@@ -764,12 +875,15 @@ def get_monitor_settings() -> dict[str, Any]:
                     ping_interval_seconds,
                     ssh_interval_seconds,
                     http_interval_seconds,
+                    xui_interval_seconds,
                     ping_timeout_seconds,
                     tcp_timeout_seconds,
                     http_timeout_seconds,
+                    xui_timeout_seconds,
                     last_ping_scheduler_run_at,
                     last_ssh_scheduler_run_at,
                     last_http_scheduler_run_at,
+                    last_xui_scheduler_run_at,
                     created_at,
                     updated_at
                 FROM monitor_settings
@@ -793,9 +907,11 @@ def update_monitor_settings(
     ping_interval_seconds: int,
     ssh_interval_seconds: int,
     http_interval_seconds: int,
+    xui_interval_seconds: int,
     ping_timeout_seconds: int,
     tcp_timeout_seconds: int,
     http_timeout_seconds: int,
+    xui_timeout_seconds: int,
 ) -> dict[str, Any]:
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -807,9 +923,11 @@ def update_monitor_settings(
                     ping_interval_seconds = %s,
                     ssh_interval_seconds = %s,
                     http_interval_seconds = %s,
+                    xui_interval_seconds = %s,
                     ping_timeout_seconds = %s,
                     tcp_timeout_seconds = %s,
                     http_timeout_seconds = %s,
+                    xui_timeout_seconds = %s,
                     updated_at = NOW()
                 WHERE id = 1
                 RETURNING *;
@@ -819,9 +937,11 @@ def update_monitor_settings(
                     ping_interval_seconds,
                     ssh_interval_seconds,
                     http_interval_seconds,
+                    xui_interval_seconds,
                     ping_timeout_seconds,
                     tcp_timeout_seconds,
                     http_timeout_seconds,
+                    xui_timeout_seconds,
                 ),
             )
             row = cur.fetchone()
@@ -835,6 +955,7 @@ def mark_scheduler_probe_run(probe_type: str) -> dict[str, Any]:
         'ping': 'last_ping_scheduler_run_at',
         'ssh': 'last_ssh_scheduler_run_at',
         'http': 'last_http_scheduler_run_at',
+        'xui': 'last_xui_scheduler_run_at',
     }
     column = column_map.get(probe_type)
     if not column:

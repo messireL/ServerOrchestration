@@ -24,21 +24,20 @@
 - связи сервер ↔ группа должны быть обозримыми и управляемыми через GUI;
 - интерфейс должен поддерживать светлую и тёмную тему.
 
-## Актуализировано для v0.1.24
-- сервер inventory поддерживает поля `host`, `ssh_port`, `ssh_user`, `web_url` и флаги мониторинга;
+## Актуализировано для v0.1.25
+- сервер inventory поддерживает поля `host`, `ssh_port`, `ssh_user`, `web_url`, `console_3xui_url`, `subscription_3xui_url` и флаги мониторинга;
 - `web_url` используется для проверки HTTP/HTTPS доступности;
-- HTTP/HTTPS probe работает в browser-like режиме и не равен будущей проверке 3x-ui subscription;
-- должны поддерживаться проверки: ping, SSH-порт, HTTP/HTTPS, затем 3x-ui, SSL, timezone, apt, reboot, журналы;
+- 3x-ui console и subscription проверяются отдельно и не смешиваются с обычным `web_url`;
+- должны поддерживаться проверки: ping, SSH, HTTP/HTTPS, 3x-ui, затем SSL, timezone, apt, reboot, журналы;
 - alerts по недоступности создаются отдельно по типам `ping_down`, `ssh_down`, `http_down`;
 - scheduler должен уметь запускать due-проверки без ручной кнопки в UI;
 - история прогонов должна различать `manual` и `scheduler` source;
 - оператор должен видеть последние scheduler-run и историю прогонов без просмотра логов контейнера;
 - probe-слой не должен ронять весь API endpoint 500-кой, если проблема возникла в записи результата в БД;
+- релиз должен сам выполнять schema-sync старой БД без ручных SQL-правок;
 - для non-root контейнера ICMP ping обеспечен через `setcap` на бинарнике и `NET_RAW` в runtime-конфигурации.
 
 ## Ближайшие функциональные блоки
-- `0.1.23` — scheduler и история проверок;
-- `0.1.24` — alerting, stale-monitoring и доставка уведомлений;
 - `0.1.25` — 3x-ui console/subscription checks;
 - `0.1.26` — SSL checks;
 - затем timezone checks, apt update/upgrade/dist-upgrade через Ansible, reboot, maintenance windows, UFW/SSH logs и уведомления email/Telegram.

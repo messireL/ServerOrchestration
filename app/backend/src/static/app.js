@@ -85,7 +85,12 @@ function statusPillHtml(label, flag, disabledLabel = null) {
 }
 
 function serverHasIssues(item) {
-  return item.ping_ok === false || item.ssh_ok === false || item.http_ok === false || Number(item.active_alerts || 0) > 0;
+  return item.ping_ok === false
+    || item.ssh_ok === false
+    || item.http_ok === false
+    || item.console_3xui_ok === false
+    || item.subscription_3xui_ok === false
+    || Number(item.active_alerts || 0) > 0;
 }
 
 function applyServerFilter(items) {
@@ -99,6 +104,8 @@ function applyServerFilter(items) {
       return list.filter((item) => Number(item.active_alerts || 0) > 0);
     case 'http':
       return list.filter((item) => item.has_http_monitoring);
+    case 'xui':
+      return list.filter((item) => item.has_3xui);
     default:
       return list;
   }
@@ -214,14 +221,17 @@ function renderMonitorSettings(settings) {
   form.ping_timeout_seconds.value = settings.ping_timeout_seconds ?? 2;
   form.tcp_timeout_seconds.value = settings.tcp_timeout_seconds ?? 3;
   form.http_timeout_seconds.value = settings.http_timeout_seconds ?? 5;
+  form.xui_interval_seconds.value = settings.xui_interval_seconds ?? 240;
+  form.xui_timeout_seconds.value = settings.xui_timeout_seconds ?? 5;
 
   if (stats) {
     const items = [
       ['Последний ping scheduler', formatTs(settings.last_ping_scheduler_run_at)],
       ['Последний SSH scheduler', formatTs(settings.last_ssh_scheduler_run_at)],
       ['Последний HTTP scheduler', formatTs(settings.last_http_scheduler_run_at)],
-      ['Ping / SSH / HTTP интервалы', `${settings.ping_interval_seconds}s / ${settings.ssh_interval_seconds}s / ${settings.http_interval_seconds}s`],
-      ['Ping / SSH / HTTP таймауты', `${settings.ping_timeout_seconds}s / ${settings.tcp_timeout_seconds}s / ${settings.http_timeout_seconds}s`],
+      ['Последний 3x-ui scheduler', formatTs(settings.last_xui_scheduler_run_at)],
+      ['Ping / SSH / HTTP / 3x-ui интервалы', `${settings.ping_interval_seconds}s / ${settings.ssh_interval_seconds}s / ${settings.http_interval_seconds}s / ${settings.xui_interval_seconds}s`],
+      ['Ping / SSH / HTTP / 3x-ui таймауты', `${settings.ping_timeout_seconds}s / ${settings.tcp_timeout_seconds}s / ${settings.http_timeout_seconds}s / ${settings.xui_timeout_seconds}s`],
     ];
     stats.innerHTML = items.map(([label, value]) => `
       <div class="micro-stat">
@@ -453,8 +463,12 @@ function renderServersTable(servers, statuses) {
             ${statusPillHtml('Ping', st.ping_ok)}
             ${statusPillHtml('SSH', st.ssh_ok)}
             ${statusPillHtml('HTTP', item.has_http_monitoring ? st.http_ok : null, item.has_http_monitoring ? null : 'off')}
+            ${statusPillHtml('3x-ui console', item.has_3xui ? st.console_3xui_ok : null, item.has_3xui ? null : 'off')}
+            ${statusPillHtml('3x-ui sub', item.has_3xui ? st.subscription_3xui_ok : null, item.has_3xui ? null : 'off')}
           </div>
           <div class="muted small-text">web: ${webText}</div>
+          <div class="muted small-text">console: ${item.console_3xui_url ? safe(item.console_3xui_url) : '—'}</div>
+          <div class="muted small-text">subscription: ${item.subscription_3xui_url ? safe(item.subscription_3xui_url) : '—'}</div>
         </td>
         <td>
           <div>${formatTs(st.last_check_at)}</div>
@@ -536,11 +550,17 @@ function renderStatuses(items) {
       <td class="code-text">${safe(item.web_url)}</td>
       <td>${statusHtml(item.ping_ok)}</td>
       <td>${statusHtml(item.ssh_ok)}</td>
-      <td>${item.has_http_monitoring ? statusHtml(item.http_ok) : '<span class="status-dot unknown">off</span>'}${item.http_status_code ? `<div class="muted small-text">HTTP ${safe(item.http_status_code)}</div>` : ''}</td>
+      <td>
+        <div>${item.has_http_monitoring ? statusHtml(item.http_ok) : '<span class="status-dot unknown">off</span>'}${item.http_status_code ? `<div class="muted small-text">HTTP ${safe(item.http_status_code)}</div>` : ''}</div>
+        <div>${item.has_3xui ? statusHtml(item.console_3xui_ok) : '<span class="status-dot unknown">off</span>'}${item.console_3xui_http_status ? `<div class="muted small-text">console HTTP ${safe(item.console_3xui_http_status)}</div>` : '<div class="muted small-text">console —</div>'}</div>
+        <div>${item.has_3xui ? statusHtml(item.subscription_3xui_ok) : '<span class="status-dot unknown">off</span>'}${item.subscription_3xui_http_status ? `<div class="muted small-text">sub HTTP ${safe(item.subscription_3xui_http_status)}</div>` : '<div class="muted small-text">sub —</div>'}</div>
+      </td>
       <td>
         <div class="muted small-text">ping: ${formatLatency(item.ping_latency_ms)}</div>
         <div class="muted small-text">ssh: ${formatLatency(item.ssh_latency_ms)}</div>
         <div class="muted small-text">http: ${formatLatency(item.http_response_ms)}</div>
+        <div class="muted small-text">3x-ui console: ${formatLatency(item.console_3xui_response_ms)}</div>
+        <div class="muted small-text">3x-ui sub: ${formatLatency(item.subscription_3xui_response_ms)}</div>
       </td>
       <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
       <td>${formatTs(item.last_check_at)}</td>
@@ -626,6 +646,8 @@ function fillServerForm(server) {
   form.ssh_port.value = server.ssh_port || 22;
   form.ssh_user.value = server.ssh_user || 'srvops';
   form.web_url.value = server.web_url || '';
+  form.console_3xui_url.value = server.console_3xui_url || '';
+  form.subscription_3xui_url.value = server.subscription_3xui_url || '';
   form.description.value = server.description || '';
   form.is_enabled.checked = !!server.is_enabled;
   form.has_http_monitoring.checked = !!server.has_http_monitoring;
@@ -684,6 +706,8 @@ async function handleServerSubmit(event) {
     ssh_port: Number(form.ssh_port.value || 22),
     ssh_user: form.ssh_user.value.trim() || 'srvops',
     web_url: form.web_url.value.trim() || null,
+    console_3xui_url: form.console_3xui_url.value.trim() || null,
+    subscription_3xui_url: form.subscription_3xui_url.value.trim() || null,
     description: form.description.value.trim() || null,
     is_enabled: form.is_enabled.checked,
     has_http_monitoring: form.has_http_monitoring.checked,
@@ -802,9 +826,9 @@ async function runHttpProbe() {
     const result = await fetchJson(endpoints.httpRun, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tcp_timeout_seconds: 3, http_timeout_seconds: 5 }),
+      body: JSON.stringify({ tcp_timeout_seconds: 3, http_timeout_seconds: 5, xui_timeout_seconds: 5 }),
     });
-    showMessage('success', `HTTP/HTTPS probe завершён: processed=${result.processed}, ok=${result.ok}, failed=${result.failed}, skipped=${result.skipped}`);
+    showMessage('success', `HTTP/HTTPS probe завершён: http ok=${result.ok}, http fail=${result.failed}, 3x-ui ok=${result.xui_ok}, 3x-ui fail=${result.xui_failed}, skipped=${result.skipped + result.xui_skipped}`);
     await loadAll();
     setTab('checks');
   } catch (error) {
@@ -821,9 +845,9 @@ async function runAllChecks() {
     const result = await fetchJson(endpoints.allRun, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tcp_timeout_seconds: 3, http_timeout_seconds: 5 }),
+      body: JSON.stringify({ tcp_timeout_seconds: 3, http_timeout_seconds: 5, xui_timeout_seconds: 5 }),
     });
-    showMessage('success', `Все проверки завершены: ping=${result.ping.failed} fail, ssh=${result.ssh.failed} fail, http=${result.http.failed} fail`);
+    showMessage('success', `Все проверки завершены: ping=${result.ping.failed} fail, ssh=${result.ssh.failed} fail, http=${result.http.failed} fail, 3x-ui=${result.http.xui_failed} fail`);
     await loadAll();
     setTab('checks');
   } catch (error) {
@@ -844,6 +868,8 @@ async function handleMonitorSettingsSubmit(event) {
     ping_timeout_seconds: Number(form.ping_timeout_seconds.value || 2),
     tcp_timeout_seconds: Number(form.tcp_timeout_seconds.value || 3),
     http_timeout_seconds: Number(form.http_timeout_seconds.value || 5),
+    xui_interval_seconds: Number(form.xui_interval_seconds.value || 240),
+    xui_timeout_seconds: Number(form.xui_timeout_seconds.value || 5),
   };
   const submitBtn = $('monitorSettingsSubmitBtn');
   if (submitBtn) submitBtn.disabled = true;

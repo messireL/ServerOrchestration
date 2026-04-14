@@ -1,43 +1,36 @@
-# Система мониторинга
+# ServerOrchestration
 
-Система мониторинга — проект оркестрации управления Ubuntu-серверами с web GUI, PostgreSQL, inventory, status/probe-слоем, alerts и будущим operational-контуром через Ansible.
+Web-панель мониторинга и операционного управления Ubuntu/Linux-серверами.
 
-## Базовые принципы
-- GitHub — основной источник кода.
-- Portainer — основной способ deploy/update.
-- Docker Compose — обязательный формат поставки стека.
-- Прямой `docker compose` на сервере — только fallback/диагностика.
-- Контейнеры приложения работают non-root.
-- Каждый релиз имеет собственную версию и папку `docs/releases/<version>/`.
+Текущий подготовленный релиз: **v0.1.25**.
+Последний подтверждённый пользователем рабочий релиз: **v0.1.23**.
 
-## Текущий релиз
-- Версия: `0.1.24`
+## Что уже есть в v0.1.25
+- inventory серверов и групп;
+- ping / SSH / HTTP проверки;
+- scheduler фоновых проверок с хранением настроек и истории в PostgreSQL;
+- alerting + stale monitoring + доставки уведомлений;
+- 3x-ui checks:
+  - отдельные URL для `console_3xui_url` и `subscription_3xui_url`;
+  - отдельные статусы, HTTP-коды и время ответа;
+  - отдельный scheduler-контур для 3x-ui без ручных SQL-правок по БД;
+- левое меню и разнесение экранов по разделам.
 
-## Что входит в v0.1.24
+## Архитектурный стек
+- FastAPI backend
+- PostgreSQL
+- статический frontend внутри backend
+- Docker / Docker Compose
+- Portainer как основной путь deploy/update
+- Ansible как будущий исполнительный слой для операций изменения состояния сервера
 
-- добавлены `alert_settings` и `alert_delivery_log` для правил уведомлений и журнала отправок;
-- появились настройки alerting: включение уведомлений, new/resolved alerts, stale threshold и reminder interval;
-- реализована доставка уведомлений через Telegram и SMTP email по env-конфигурации;
-- активные alerts теперь хранят `notify_count`, `last_notified_at`, `last_delivery_status`, `last_delivery_error`;
-- background loop дополнительно оценивает stale-monitoring и reminder-уведомления;
-- в API появились endpoints `/api/alerts/settings`, `/api/alerts/deliveries`, `/api/alerts/test`;
-- экран `Оповещения` теперь показывает настройки alerting, активные alerts и журнал доставок;
-- scheduler/history из `0.1.23` сохранены без отката.
+## Документация
+- ТЗ: `docs/TZ.md`
+- Архитектура: `docs/ARCHITECTURE.md`
+- Регламент релизов: `docs/RELEASE_POLICY.md`
+- Перенос в новый чат: `docs/TRANSFER_TO_NEW_CHAT.md`
+- Материалы по релизам: `docs/releases/<version>/`
 
-## Что уже можно делать через веб-интерфейс
-- смотреть summary и dashboard;
-- создавать, редактировать и удалять серверы;
-- создавать, редактировать и удалять группы;
-- создавать и удалять связи сервер ↔ группа;
-- запускать ping / SSH / HTTP/HTTPS проверки вручную;
-- включать и выключать scheduler мониторинга;
-- задавать интервалы и таймауты ping / SSH / HTTP;
-- смотреть историю ручных и фоновых прогонов;
-- фильтровать inventory по состоянию и типу мониторинга;
-- смотреть alerts и статусы по разделам;
-- смотреть ping diagnostics через API.
-
-## Роль Ansible
-- Быстрые проверки (`ping`, `SSH`, `HTTP/HTTPS`) остаются в собственном probe-слое проекта.
-- Ansible не используется как GUI и не используется для частого мониторинга.
-- Ansible будет подключаться как исполнительный слой для apt, timezone, reboot, 3x-ui и operational-задач.
+## Ближайший следующий блок
+- **v0.1.26** — SSL checks
+- затем timezone checks, apt/update flows, reboot actions, журналы, maintenance windows
