@@ -10,7 +10,7 @@
 - Быстрые проверки (`ping`, `SSH`, `HTTP/HTTPS`, `3x-ui console`, `3x-ui subscription`) идут отдельным probe-слоем, не через Ansible.
 - Ansible используется как исполнительный слой для операций изменения: apt, timezone, reboot, 3x-ui update/restart, сбор журналов и т.п.
 
-## Актуальное уточнение v0.1.27
+## Актуальное уточнение v0.1.28
 - inventory сервера хранит `web_url`, `console_3xui_url`, `subscription_3xui_url` и профильные флаги мониторинга;
 - probe-слой умеет:
   - ICMP ping;
@@ -30,3 +30,5 @@
 
 - hotfix v0.1.26 восстанавливает отсутствовавший backend batch-runner для 3x-ui, чтобы scheduler и manual probes не падали `NameError`.
 - hotfix v0.1.27 синхронизирует frontend form-fields monitor settings с backend scheduler settings и добавляет безопасную запись значений в форму.
+
+- infra v0.1.28 переводит Portainer stack backend image на стабильный operational tag `stable`, сохраняя version tag в registry только для истории/rollback.

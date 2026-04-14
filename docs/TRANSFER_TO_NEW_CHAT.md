@@ -9,10 +9,10 @@
 
 ## Текущее состояние
 - Последний подтверждённый пользователем рабочий релиз: **v0.1.23**
-- Текущий подготовленный релиз в этом архиве: **v0.1.27**
+- Текущий подготовленный релиз в этом архиве: **v0.1.28**
 - Главный приоритет пользователя: **меньше UI-полировки, больше функциональных релизов мониторинга и operational-контура**
 
-## Что уже реализовано к v0.1.27
+## Что уже реализовано к v0.1.28
 - inventory серверов и групп;
 - ping / SSH / HTTP проверки;
 - scheduler фоновых проверок с историей прогонов;
@@ -22,7 +22,7 @@
   - отдельные статусы, HTTP-коды и latency;
   - отдельные `xui_interval_seconds` и `xui_timeout_seconds`;
   - отдельный scheduler-run по 3x-ui;
-  - hotfix: синхронизированы frontend-поля формы scheduler для 3x-ui и добавлен защитный JS binding, чтобы главная больше не падала на `Cannot set properties of undefined (setting 'value')`;
+  - infra: Portainer stack переведён на стабильный backend image tag `stable`, workflow GHCR публикует `stable` + version tag, а stack хранит release markers отдельно;
 - встроенные DB-модификации без ручного SQL для старой схемы.
 
 ## Что важно помнить в следующем чате
@@ -32,15 +32,15 @@
 - Portainer — основной сценарий deploy/update;
 - UI уже разнесён по левому меню, дальше приоритет на функциональность, а не косметику.
 
-## Что проверить после выкладки v0.1.27
-1. Главная открывается без красной ошибки `Cannot set properties of undefined (setting 'value')`.
-2. В блоке `Планировщик мониторинга` видны поля `3x-ui interval` и `3x-ui timeout`.
-3. В `Проверки` ручной запуск connectivity/http проходит без 500-ошибки.
-4. Через 1-2 интервала scheduler появляются новые history-записи `scheduler` для `xui`.
-5. `/api/status/servers` продолжает возвращать `console_3xui_*` и `subscription_3xui_*`.
+## Что проверить после выкладки v0.1.28
+1. В Portainer backend image по stack env/compose идёт как `ghcr.io/messirel/serverorchestration-backend:stable`.
+2. Контейнер backend остаётся тем же по имени, без плодящихся version-tag image references в stack compose.
+3. На панели/через inspect видны release markers `APP_RELEASE_VERSION=0.1.28` и `APP_RELEASE_CHANNEL=stable`.
+4. `/health` и `/version` отвечают штатно.
+5. Главная и Проверки продолжают работать без регрессии после перехода на stable tag.
 
 ## Следующий логичный релиз
-- **v0.1.28 — SSL checks**
+- **v0.1.29 — SSL checks**
   - срок действия сертификата;
   - остаток дней;
   - статус валиден / истекает / просрочен;

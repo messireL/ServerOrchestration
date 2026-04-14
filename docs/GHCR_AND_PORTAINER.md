@@ -25,4 +25,10 @@ Portainer успешно читает private Git-репозиторий по Gi
 - использовать один и тот же stack name, а не создавать новый stack на каждый релиз;
 - redeploy существующий stack, а не дублировать его;
 - периодически чистить stopped-контейнеры и dangling images через Portainer prune или через Docker CLI;
-- помнить, что смена image tag (`0.1.20` → `0.1.21`) почти всегда означает пересоздание контейнера.
+- начиная с v0.1.28 runtime-стек по умолчанию использует tag `stable`, а version tags остаются только для истории/rollback.
+
+
+## Что меняется с v0.1.28
+- основной runtime tag для backend: `ghcr.io/messirel/serverorchestration-backend:stable`;
+- version tag публикуется параллельно только для rollback и аудита;
+- stack env хранит `BACKEND_RELEASE_VERSION` и `BACKEND_RELEASE_CHANNEL`, поэтому релиз прозрачен без постоянной смены image tag в compose.

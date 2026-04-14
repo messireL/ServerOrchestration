@@ -17,7 +17,7 @@ services:
       retries: 10
 
   backend:
-    image: ghcr.io/messirel/serverorchestration-backend:0.1.27
+    image: ${BACKEND_IMAGE:-ghcr.io/messirel/serverorchestration-backend:stable}
     container_name: server-orchestration-backend
     restart: unless-stopped
     cap_add:
@@ -30,6 +30,8 @@ services:
       APP_DISPLAY_NAME: ${APP_DISPLAY_NAME:-Система мониторинга}
       APP_TZ: ${APP_TZ:-Europe/Moscow}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-http://192.168.5.22:18080}
+      APP_RELEASE_VERSION: ${BACKEND_RELEASE_VERSION:-0.1.28}
+      APP_RELEASE_CHANNEL: ${BACKEND_RELEASE_CHANNEL:-stable}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB:-orchestrator}
@@ -37,6 +39,9 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME}
     ports:
       - "${BACKEND_BIND_IP:-192.168.5.22}:${BACKEND_PORT:-18080}:8080"
+    labels:
+      com.serverorchestration.release: ${BACKEND_RELEASE_VERSION:-0.1.28}
+      com.serverorchestration.channel: ${BACKEND_RELEASE_CHANNEL:-stable}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
       interval: 15s

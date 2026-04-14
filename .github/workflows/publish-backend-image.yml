@@ -45,8 +45,7 @@ jobs:
           images: ghcr.io/messirel/serverorchestration-backend
           tags: |
             type=raw,value=${{ steps.version.outputs.app_version }}
-            type=sha,format=short
-            type=raw,value=latest
+            type=raw,value=stable
 
       - name: Build and push backend image
         uses: docker/build-push-action@v6
