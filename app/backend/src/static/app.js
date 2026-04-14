@@ -123,13 +123,34 @@ function showMessage(type, text) {
   setTimeout(() => div.remove(), 5000);
 }
 
+function formatApiError(payload, status) {
+  if (payload === null || payload === undefined || payload === '') return `HTTP ${status}`;
+  if (typeof payload === 'string') return payload;
+  if (Array.isArray(payload)) {
+    return payload.map((item) => formatApiError(item, status)).filter(Boolean).join('; ');
+  }
+  if (typeof payload === 'object') {
+    if (payload.detail !== undefined) return formatApiError(payload.detail, status);
+    const parts = [];
+    if (payload.msg) parts.push(String(payload.msg));
+    if (Array.isArray(payload.loc) && payload.loc.length) parts.push(`loc=${payload.loc.join('.')}`);
+    if (payload.type) parts.push(String(payload.type));
+    if (parts.length) return parts.join(' · ');
+    try {
+      return JSON.stringify(payload);
+    } catch (error) {
+      return `HTTP ${status}`;
+    }
+  }
+  return String(payload);
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   const contentType = response.headers.get('content-type') || '';
   const payload = contentType.includes('application/json') ? await response.json() : await response.text();
   if (!response.ok) {
-    const detail = typeof payload === 'object' && payload?.detail ? payload.detail : payload;
-    throw new Error(String(detail || `HTTP ${response.status}`));
+    throw new Error(formatApiError(payload, response.status));
   }
   return payload;
 }
@@ -950,6 +971,7 @@ async function runXuiProbe() {
     const result = await fetchJson(endpoints.xuiRun, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ xui_timeout_seconds: 5 }),
     });
     showMessage('success', `Проверка 3x-ui завершена.`);
     await loadAll();
@@ -968,6 +990,7 @@ async function runSslProbe() {
     const result = await fetchJson(endpoints.sslRun, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ssl_timeout_seconds: 5 }),
     });
     showMessage('success', `Проверка SSL завершена.`);
     await loadAll();

@@ -1308,22 +1308,25 @@ def api_run_http_probe(payload: ConnectivityProbeRequest):
 
 
 @app.post("/api/probes/xui/run")
-def api_run_xui_probe(payload: ConnectivityProbeRequest):
-    return _execute_xui_batch(timeout_seconds=payload.xui_timeout_seconds, source="manual")
+def api_run_xui_probe(payload: ConnectivityProbeRequest | None = None):
+    config = payload or ConnectivityProbeRequest()
+    return _execute_xui_batch(timeout_seconds=config.xui_timeout_seconds, source="manual")
 
 
 @app.post("/api/probes/ssl/run")
-def api_run_ssl_probe(payload: ConnectivityProbeRequest):
-    return _execute_ssl_batch(timeout_seconds=payload.ssl_timeout_seconds, source="manual")
+def api_run_ssl_probe(payload: ConnectivityProbeRequest | None = None):
+    config = payload or ConnectivityProbeRequest()
+    return _execute_ssl_batch(timeout_seconds=config.ssl_timeout_seconds, source="manual")
 
 
 @app.post("/api/probes/connectivity/run")
-def api_run_connectivity_probe(payload: ConnectivityProbeRequest):
-    ping_result = _execute_ping_batch(timeout_seconds=min(payload.tcp_timeout_seconds, 10), source="manual")
-    ssh_result = _execute_ssh_batch(timeout_seconds=payload.tcp_timeout_seconds, source="manual")
-    http_result = _execute_http_batch(timeout_seconds=payload.http_timeout_seconds, source="manual")
-    xui_result = _execute_xui_batch(timeout_seconds=payload.xui_timeout_seconds, source="manual")
-    ssl_result = _execute_ssl_batch(timeout_seconds=payload.ssl_timeout_seconds, source="manual")
+def api_run_connectivity_probe(payload: ConnectivityProbeRequest | None = None):
+    config = payload or ConnectivityProbeRequest()
+    ping_result = _execute_ping_batch(timeout_seconds=min(config.tcp_timeout_seconds, 10), source="manual")
+    ssh_result = _execute_ssh_batch(timeout_seconds=config.tcp_timeout_seconds, source="manual")
+    http_result = _execute_http_batch(timeout_seconds=config.http_timeout_seconds, source="manual")
+    xui_result = _execute_xui_batch(timeout_seconds=config.xui_timeout_seconds, source="manual")
+    ssl_result = _execute_ssl_batch(timeout_seconds=config.ssl_timeout_seconds, source="manual")
     return {
         "ping": ping_result,
         "ssh": ssh_result,
