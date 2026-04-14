@@ -287,6 +287,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
             cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
             cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
+            cur.execute("ALTER TABLE probe_history ADD COLUMN IF NOT EXISTS details_text TEXT;")
             cur.execute("UPDATE probe_history SET server_name_snapshot = COALESCE(server_name_snapshot, '') WHERE server_name_snapshot IS NULL;")
             cur.execute("UPDATE probe_history SET server_host_snapshot = COALESCE(server_host_snapshot, '') WHERE server_host_snapshot IS NULL;")
             cur.execute("UPDATE probe_history SET probe_type = COALESCE(probe_type, 'ping') WHERE probe_type IS NULL;")
@@ -806,13 +807,26 @@ def update_3xui_status(
     console_response_ms: int | None,
     console_status_code: int | None,
     console_error: str | None,
+    console_details: dict[str, Any] | None = None,
     console_checked_at = None,
     subscription_ok: bool | None,
     subscription_response_ms: int | None,
     subscription_status_code: int | None,
     subscription_error: str | None,
+    subscription_details: dict[str, Any] | None = None,
     subscription_checked_at = None,
+    source: str | None = None,
 ):
+    console_payload = dict(console_details or {})
+    subscription_payload = dict(subscription_details or {})
+    if source:
+        console_payload.setdefault("source", source)
+        subscription_payload.setdefault("source", source)
+    if console_checked_at and console_payload.get("checked_at") is None:
+        console_payload["checked_at"] = console_checked_at
+    if subscription_checked_at and subscription_payload.get("checked_at") is None:
+        subscription_payload["checked_at"] = subscription_checked_at
+
     last_error = console_error or subscription_error
     summary_json = _status_summary_json(
         last_error=last_error,
@@ -820,9 +834,15 @@ def update_3xui_status(
         console_3xui_ok=console_ok,
         console_3xui_http_status=console_status_code,
         console_3xui_response_ms=console_response_ms,
+        xui_console_error=console_error,
+        xui_console_last_probe=console_payload,
+        xui_console_details=console_payload,
         subscription_3xui_ok=subscription_ok,
         subscription_3xui_http_status=subscription_status_code,
         subscription_3xui_response_ms=subscription_response_ms,
+        xui_subscription_error=subscription_error,
+        xui_subscription_last_probe=subscription_payload,
+        xui_subscription_details=subscription_payload,
     )
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -850,10 +870,13 @@ def update_3xui_status(
                     subscription_3xui_ok = EXCLUDED.subscription_3xui_ok,
                     subscription_3xui_http_status = EXCLUDED.subscription_3xui_http_status,
                     subscription_3xui_response_ms = EXCLUDED.subscription_3xui_response_ms,
-                    last_error = COALESCE(EXCLUDED.last_error, server_status.last_error),
+                    last_error = CASE
+                        WHEN EXCLUDED.last_error IS NOT NULL AND EXCLUDED.last_error <> '' THEN EXCLUDED.last_error
+                        ELSE server_status.last_error
+                    END,
                     last_check_at = EXCLUDED.last_check_at,
                     updated_at = NOW(),
-                    summary_json = server_status.summary_json || EXCLUDED.summary_json;
+                    summary_json = COALESCE(server_status.summary_json, '{}'::jsonb) || EXCLUDED.summary_json;
                 """,
                 (
                     server_id,
@@ -882,6 +905,7 @@ def insert_probe_history(
     latency_ms: int | None = None,
     status_code: int | None = None,
     error: str | None = None,
+    details_text: str | None = None,
     started_at = None,
     finished_at = None,
 ) -> dict[str, Any]:
@@ -899,10 +923,11 @@ def insert_probe_history(
                     latency_ms,
                     status_code,
                     error,
+                    details_text,
                     started_at,
                     finished_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()), COALESCE(%s, NOW()))
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, NOW()), COALESCE(%s, NOW()))
                 RETURNING *;
                 """,
                 (
@@ -915,6 +940,7 @@ def insert_probe_history(
                     latency_ms,
                     status_code,
                     error,
+                    details_text,
                     started_at,
                     finished_at,
                 ),
@@ -951,6 +977,7 @@ def list_probe_history(limit: int = 50, server_id: int | None = None, probe_type
             ph.latency_ms,
             ph.status_code,
             ph.error,
+            ph.details_text AS details,
             ph.started_at,
             ph.finished_at,
             ph.created_at

@@ -61,7 +61,7 @@ from src.probes import get_ping_diagnostics, probe_ssl_certificate, run_3xui_sub
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.39")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.40")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 SCHEDULER_POLL_SECONDS = int(os.getenv("MONITOR_SCHEDULER_POLL_SECONDS", "5"))
@@ -634,7 +634,7 @@ def _execute_xui_batch(timeout_seconds: int, source: str) -> dict:
         for server in servers:
             started_at = _utc_now()
             try:
-                result = _run_xui_probe_for_server(server, timeout_seconds)
+                result = _run_xui_probe_for_server(server, timeout_seconds, source=source)
             except Exception as exc:
                 logger.exception("3x-ui probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
                 result = {
@@ -770,6 +770,64 @@ def _execute_ssl_batch(timeout_seconds: int, source: str = "scheduler") -> Dict[
         }
 
 
+def _format_bytes_compact(value: Any) -> str | None:
+    try:
+        size = float(value)
+    except (TypeError, ValueError):
+        return None
+    units = ["B", "KB", "MB", "GB", "TB"]
+    idx = 0
+    while size >= 1024 and idx < len(units) - 1:
+        size /= 1024.0
+        idx += 1
+    return f"{size:.1f} {units[idx]}" if idx else f"{int(size)} {units[idx]}"
+
+
+def _history_details_text(result: dict, probe_type: str) -> str | None:
+    if probe_type == "ssl":
+        details = dict(result.get("details") or {})
+        parts: list[str] = []
+        subject_cn = details.get("subject_cn")
+        issuer_cn = details.get("issuer_cn")
+        if subject_cn:
+            parts.append(f"CN {subject_cn}")
+        elif issuer_cn:
+            parts.append(f"issuer {issuer_cn}")
+        if details.get("self_signed"):
+            parts.append("self-signed")
+        if details.get("days_remaining") is not None:
+            parts.append(f"{details.get('days_remaining')}d")
+        if details.get("not_after"):
+            parts.append(f"exp {str(details.get('not_after'))[:10]}")
+        return " · ".join(str(part) for part in parts if part) or None
+
+    if probe_type == "xui":
+        subscription = dict(result.get("subscription", {}).get("details") or {})
+        console = dict(result.get("console", {}).get("details") or {})
+        parts: list[str] = []
+        if subscription.get("entries_count") is not None:
+            parts.append(f"cfg {subscription.get('entries_count')}")
+        elif subscription.get("entries") is not None:
+            parts.append(f"cfg {subscription.get('entries')}")
+        used_bytes = subscription.get("used_bytes")
+        total_bytes = subscription.get("total_bytes")
+        if used_bytes is not None or total_bytes is not None:
+            used = _format_bytes_compact(used_bytes) or "0 B"
+            total = _format_bytes_compact(total_bytes) or "∞"
+            parts.append(f"traffic {used}/{total}")
+        if subscription.get("expires_at"):
+            parts.append(f"exp {str(subscription.get('expires_at'))[:10]}")
+        elif subscription.get("days_remaining") is not None:
+            parts.append(f"exp {subscription.get('days_remaining')}d")
+        if subscription.get("encoding"):
+            parts.append(str(subscription.get("encoding")))
+        if console.get("status_code"):
+            parts.append(f"console HTTP {console.get('status_code')}")
+        return " · ".join(str(part) for part in parts if part) or None
+
+    return None
+
+
 def _record_probe_history(result: dict, probe_type: str, source: str, started_at: datetime, finished_at: datetime) -> None:
     try:
         latency_value = result.get("response_ms") if probe_type in {"http", "xui"} else result.get("latency_ms")
@@ -783,6 +841,7 @@ def _record_probe_history(result: dict, probe_type: str, source: str, started_at
             latency_ms=latency_value,
             status_code=result.get("status_code"),
             error=_normalize_probe_error(result.get("error")),
+            details_text=_history_details_text(result, probe_type),
             started_at=started_at,
             finished_at=finished_at,
         )

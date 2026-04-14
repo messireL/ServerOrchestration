@@ -324,10 +324,10 @@ def _decode_subscription_payload(raw_body: bytes) -> tuple[bool, dict, str | Non
     return False, {"encoding": "unknown", "entries": 0, "payload_bytes": len(raw_body)}, "subscription payload is not a valid 3x-ui share list"
 
 
-def fetch_url(url: str | None, timeout_seconds: int = 5, *, verify_tls: bool = True) -> tuple[bool, int | None, int | None, str | None, bytes, str | None]:
+def fetch_url(url: str | None, timeout_seconds: int = 5, *, verify_tls: bool = True) -> tuple[bool, int | None, int | None, str | None, bytes, str | None, dict[str, str]]:
     url = (url or "").strip()
     if not url:
-        return False, None, None, "url not configured", b"", None
+        return False, None, None, "url not configured", b"", None, {}
 
     started = time.perf_counter()
     request = urllib.request.Request(url, headers=BROWSER_HEADERS, method="GET")
@@ -340,21 +340,23 @@ def fetch_url(url: str | None, timeout_seconds: int = 5, *, verify_tls: bool = T
             status = getattr(response, "status", None)
             latency_ms = max(1, int(round((time.perf_counter() - started) * 1000)))
             final_url = getattr(response, "geturl", lambda: url)()
-            return status is not None and int(status) < 400, int(status) if status is not None else None, latency_ms, None, body, final_url
+            headers = {str(k).lower(): str(v) for k, v in response.headers.items()}
+            return status is not None and int(status) < 400, int(status) if status is not None else None, latency_ms, None, body, final_url, headers
     except urllib.error.HTTPError as exc:
         latency_ms = max(1, int(round((time.perf_counter() - started) * 1000)))
         try:
             body = exc.read()
         except Exception:
             body = b""
-        return False, exc.code, latency_ms, f"HTTP {exc.code}", body, url
+        headers = {str(k).lower(): str(v) for k, v in getattr(exc, "headers", {}).items()} if getattr(exc, "headers", None) else {}
+        return False, exc.code, latency_ms, f"HTTP {exc.code}", body, url, headers
     except Exception as exc:
         latency_ms = max(1, int(round((time.perf_counter() - started) * 1000)))
-        return False, None, latency_ms, str(exc), b"", url
+        return False, None, latency_ms, str(exc), b"", url, {}
 
 
 def run_http_check(url: str | None, timeout_seconds: int = 5, *, verify_tls: bool = True) -> dict[str, Any]:
-    ok, status_code, response_ms, error, _body, _final_url = fetch_url(url, timeout_seconds=timeout_seconds, verify_tls=verify_tls)
+    ok, status_code, response_ms, error, _body, _final_url, _headers = fetch_url(url, timeout_seconds=timeout_seconds, verify_tls=verify_tls)
     return {
         "ok": ok,
         "status_code": status_code,
@@ -364,7 +366,7 @@ def run_http_check(url: str | None, timeout_seconds: int = 5, *, verify_tls: boo
 
 
 def run_3xui_subscription_check(url: str | None, timeout_seconds: int = 5) -> dict[str, Any]:
-    ok, status_code, response_ms, error, body, final_url = fetch_url(url, timeout_seconds=timeout_seconds, verify_tls=False)
+    ok, status_code, response_ms, error, body, final_url, headers = fetch_url(url, timeout_seconds=timeout_seconds, verify_tls=False)
     details: dict[str, Any] = {
         "target_url": url,
         "final_url": final_url,
@@ -381,6 +383,54 @@ def run_3xui_subscription_check(url: str | None, timeout_seconds: int = 5) -> di
 
     payload_ok, payload_details, payload_error = _decode_subscription_payload(body)
     details.update(payload_details)
+    subscription_userinfo = headers.get("subscription-userinfo") or headers.get("subscription_userinfo")
+    if subscription_userinfo:
+        details["subscription_userinfo"] = subscription_userinfo
+        parsed_userinfo = {}
+        for part in subscription_userinfo.split(';'):
+            if '=' not in part:
+                continue
+            key, value = part.split('=', 1)
+            key = key.strip().lower().replace('-', '_')
+            value = value.strip()
+            if not key or not value:
+                continue
+            try:
+                parsed_userinfo[key] = int(value)
+            except ValueError:
+                parsed_userinfo[key] = value
+        if parsed_userinfo:
+            details["subscription_userinfo_parsed"] = parsed_userinfo
+            upload = parsed_userinfo.get("upload")
+            download = parsed_userinfo.get("download")
+            total = parsed_userinfo.get("total")
+            expire = parsed_userinfo.get("expire")
+            if isinstance(upload, int):
+                details["upload_bytes"] = upload
+            if isinstance(download, int):
+                details["download_bytes"] = download
+            if isinstance(upload, int) or isinstance(download, int):
+                details["used_bytes"] = int(upload or 0) + int(download or 0)
+            if isinstance(total, int):
+                details["total_bytes"] = total
+                if details.get("used_bytes") is not None:
+                    details["remaining_bytes"] = max(total - int(details["used_bytes"]), 0)
+            if isinstance(expire, int) and expire > 0:
+                try:
+                    expire_dt = datetime.fromtimestamp(expire, tz=timezone.utc)
+                    details["expires_at"] = expire_dt.isoformat()
+                    details["days_remaining"] = int((expire_dt - datetime.now(timezone.utc)).total_seconds() // 86400)
+                except Exception:
+                    pass
+    profile_title = headers.get("profile-title") or headers.get("profile_title")
+    if profile_title:
+        details["profile_title"] = profile_title
+    support_url = headers.get("support-url") or headers.get("support_url")
+    if support_url:
+        details["support_url"] = support_url
+    profile_web_page_url = headers.get("profile-web-page-url") or headers.get("profile_web_page_url")
+    if profile_web_page_url:
+        details["profile_web_page_url"] = profile_web_page_url
     if payload_error:
         details["payload_error"] = payload_error
     return {

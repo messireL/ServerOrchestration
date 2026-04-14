@@ -203,6 +203,19 @@ function parseSummary(summary) {
   }
 }
 
+function formatBytesCompact(value) {
+  const size = Number(value);
+  if (!Number.isFinite(size)) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let current = size;
+  let idx = 0;
+  while (current >= 1024 && idx < units.length - 1) {
+    current /= 1024;
+    idx += 1;
+  }
+  return idx === 0 ? `${Math.round(current)} ${units[idx]}` : `${current.toFixed(current >= 100 ? 0 : current >= 10 ? 1 : 2)} ${units[idx]}`;
+}
+
 function compactProbeDetail(value, max = 36) {
   const text = String(value ?? '').trim();
   if (!text) return '';
@@ -230,10 +243,18 @@ function buildContourDetails(item) {
     if (xuiSub.status_code) parts.push(`HTTP ${xuiSub.status_code}`);
     if (Number.isFinite(Number(xuiSub.entries_count)) && Number(xuiSub.entries_count) > 0) parts.push(`${Number(xuiSub.entries_count)} cfg`);
     else if (Number.isFinite(Number(xuiSub.entries)) && Number(xuiSub.entries) > 0) parts.push(`${Number(xuiSub.entries)} cfg`);
+    const usedBytes = Number(xuiSub.used_bytes);
+    const totalBytes = Number(xuiSub.total_bytes);
+    if (Number.isFinite(usedBytes) || Number.isFinite(totalBytes)) {
+      const usedLabel = Number.isFinite(usedBytes) ? formatBytesCompact(usedBytes) : '0 B';
+      const totalLabel = Number.isFinite(totalBytes) && totalBytes > 0 ? formatBytesCompact(totalBytes) : '∞';
+      parts.push(`${usedLabel}/${totalLabel}`);
+    }
+    if (Number.isFinite(Number(xuiSub.days_remaining))) parts.push(`exp ${Number(xuiSub.days_remaining)}d`);
+    else if (xuiSub.expires_at) parts.push(`exp ${String(xuiSub.expires_at).slice(0, 10)}`);
     if (xuiSub.encoding) parts.push(String(xuiSub.encoding));
     if (Array.isArray(xuiSub.entry_types) && xuiSub.entry_types.length) parts.push(xuiSub.entry_types.join(', '));
     if (xuiSub.profile_title) parts.push(String(xuiSub.profile_title));
-    if (xuiSub.subscription_userinfo) parts.push(compactProbeDetail(String(xuiSub.subscription_userinfo), 36));
     result.sub = parts.join(' · ');
   } else if (xuiSub && (xuiSub.payload_error || xuiSub.error || summary.xui_subscription_error)) {
     result.sub = compactProbeDetail(xuiSub.payload_error || xuiSub.error || summary.xui_subscription_error, 28);
@@ -384,6 +405,7 @@ function renderProbeHistory(items) {
         ? '<span class="pill pill-danger">FAIL</span>'
         : '<span class="pill pill-neutral">unknown</span>';
     const details = [];
+    if (item.details) details.push(String(item.details));
     if (item.latency_ms !== null && item.latency_ms !== undefined) details.push(`${item.latency_ms} ms`);
     if (item.status_code !== null && item.status_code !== undefined) details.push(`HTTP ${item.status_code}`);
     return `
