@@ -61,7 +61,7 @@ from src.probes import get_ping_diagnostics, probe_ssl_certificate, run_3xui_sub
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.35")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.39")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 SCHEDULER_POLL_SECONDS = int(os.getenv("MONITOR_SCHEDULER_POLL_SECONDS", "5"))
@@ -519,131 +519,107 @@ def _join_probe_errors(*parts: object) -> str | None:
     return " | ".join(cleaned)[:500]
 
 
-def _run_xui_probe_for_server(server: dict, timeout_seconds: int) -> dict:
-    if not server.get("has_3xui"):
+def _run_xui_probe_for_server(server: Dict[str, Any], timeout_seconds: int, source: str = "scheduler") -> Dict[str, Any]:
+    server_id = server["id"]
+    if not server.get("has_3xui_monitoring"):
+        result = {"ok": False, "error": "3x-ui monitoring disabled", "skipped": True}
+        update_3xui_status(
+            server_id=server_id,
+            console_ok=False,
+            console_response_ms=None,
+            console_status_code=None,
+            console_error=result["error"],
+            subscription_ok=False,
+            subscription_response_ms=None,
+            subscription_status_code=None,
+            subscription_error=result["error"],
+            source=source,
+        )
+        return result
+
+    try:
+        console_probe = run_http_check(
+            server.get("console_3xui_url") or "",
+            timeout_seconds=timeout_seconds,
+            verify_tls=False,
+        )
+        subscription_probe = run_3xui_subscription_check(
+            server.get("subscription_3xui_url") or "",
+            timeout_seconds=timeout_seconds,
+        )
+        last_error = console_probe.get("error") or subscription_probe.get("error")
+        persistence_error = None
+        console_details = {
+            "checked_at": _coerce_dt(console_probe.get("checked_at")),
+            "status_code": console_probe.get("status_code"),
+            "response_ms": console_probe.get("response_ms"),
+            "error": _normalize_probe_error(console_probe.get("error")),
+        }
+        subscription_details = dict(subscription_probe.get("details") or {})
+        subscription_details["checked_at"] = _coerce_dt(subscription_probe.get("checked_at"))
+        subscription_details.setdefault("status_code", subscription_probe.get("status_code"))
+        subscription_details.setdefault("response_ms", subscription_probe.get("response_ms"))
+        if subscription_details.get("entries") is not None and subscription_details.get("entries_count") is None:
+            subscription_details["entries_count"] = subscription_details.get("entries")
+        if subscription_probe.get("error"):
+            subscription_details.setdefault("error", _normalize_probe_error(subscription_probe.get("error")))
+
         try:
             update_3xui_status(
                 server_id=server["id"],
-                console_ok=None,
-                console_response_ms=None,
-                console_status_code=None,
-                console_error=None,
-                subscription_ok=None,
-                subscription_response_ms=None,
-                subscription_status_code=None,
-                subscription_error=None,
+                console_ok=console_probe["ok"],
+                console_response_ms=console_probe["response_ms"],
+                console_status_code=console_probe["status_code"],
+                console_error=_normalize_probe_error(console_probe["error"]),
+                console_details=console_details,
+                subscription_ok=subscription_probe["ok"],
+                subscription_response_ms=subscription_probe["response_ms"],
+                subscription_status_code=subscription_probe["status_code"],
+                subscription_error=_normalize_probe_error(subscription_probe.get("error")),
+                subscription_details=subscription_details,
             )
-        except Exception as exc:
-            logger.exception("3x-ui probe status reset failed for server_id=%s host=%s", server.get("id"), server.get("host"))
-            persistence_error = _normalize_probe_error(exc)
+        except Exception as db_exc:  # noqa: BLE001
+            persistence_error = str(db_exc)
+            logger.exception(
+                "Failed to persist 3x-ui probe result for server_id=%s host=%s",
+                server["id"],
+                server.get("host"),
+            )
+
+        if persistence_error:
+            if last_error:
+                combined_error = f"{last_error}; db: {persistence_error}"
+            else:
+                combined_error = f"db: {persistence_error}"
             return {
-                "server_id": server["id"],
-                "name": server["name"],
-                "host": server["host"],
-                "console_url": server.get("console_3xui_url"),
-                "subscription_url": server.get("subscription_3xui_url"),
                 "ok": False,
-                "probe_ok": None,
-                "status_code": None,
-                "response_ms": None,
-                "console_ok": None,
-                "console_status_code": None,
-                "console_response_ms": None,
-                "subscription_ok": None,
-                "subscription_status_code": None,
-                "subscription_response_ms": None,
-                "error": f"db persistence failed: {persistence_error}",
-                "skipped": False,
-                "persistence_error": persistence_error,
+                "console": {**console_probe, "details": console_details},
+                "subscription": {**subscription_probe, "details": subscription_details},
+                "error": combined_error,
+                "db_error": persistence_error,
             }
 
         return {
-            "server_id": server["id"],
-            "name": server["name"],
-            "host": server["host"],
-            "console_url": server.get("console_3xui_url"),
-            "subscription_url": server.get("subscription_3xui_url"),
-            "ok": None,
-            "probe_ok": None,
-            "status_code": None,
-            "response_ms": None,
-            "console_ok": None,
-            "console_status_code": None,
-            "console_response_ms": None,
-            "subscription_ok": None,
-            "subscription_status_code": None,
-            "subscription_response_ms": None,
-            "error": "3x-ui monitoring disabled",
-            "skipped": True,
-            "persistence_error": None,
+            "ok": console_probe.get("ok", False) and subscription_probe.get("ok", False),
+            "console": {**console_probe, "details": console_details},
+            "subscription": {**subscription_probe, "details": subscription_details},
+            "error": last_error,
         }
-
-    console_probe = run_http_check(server.get("console_3xui_url") or "", timeout_seconds=timeout_seconds)
-    subscription_probe = run_http_check(server.get("subscription_3xui_url") or "", timeout_seconds=timeout_seconds)
-    persistence_error = None
-
-    try:
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("3x-ui probe failed for server_id=%s host=%s", server_id, server.get("host"))
         update_3xui_status(
-            server_id=server["id"],
-            console_ok=console_probe["ok"],
-            console_response_ms=console_probe["response_ms"],
-            console_status_code=console_probe["status_code"],
-            console_error=_normalize_probe_error(console_probe["error"]),
-            subscription_ok=subscription_probe["ok"],
-            subscription_response_ms=subscription_probe["response_ms"],
-            subscription_status_code=subscription_probe["status_code"],
-            subscription_error=_normalize_probe_error(subscription_probe["error"]),
+            server_id=server_id,
+            console_ok=False,
+            console_response_ms=None,
+            console_status_code=None,
+            console_error=str(exc),
+            subscription_ok=False,
+            subscription_response_ms=None,
+            subscription_status_code=None,
+            subscription_error=str(exc),
+            source=source,
         )
-        probe_states = [item for item in (console_probe.get("ok"), subscription_probe.get("ok")) if item is not None]
-        if probe_states and all(item is True for item in probe_states):
-            _maybe_notify_resolved_alerts(resolve_alert(server_id=server["id"], alert_type="xui_down"), server.get("name"), server.get("host"))
-        elif any(item is False for item in probe_states):
-            _maybe_notify_new_alert(
-                set_alert_active(
-                    server_id=server["id"],
-                    alert_type="xui_down",
-                    severity="warning",
-                    message=f"3x-ui недоступен: {_join_probe_errors(console_probe.get('error'), subscription_probe.get('error')) or 'request failed'}",
-                ),
-                server.get("name"),
-                server.get("host"),
-            )
-    except Exception as exc:
-        logger.exception("3x-ui probe persistence failed for server_id=%s host=%s", server.get("id"), server.get("host"))
-        persistence_error = _normalize_probe_error(exc)
-
-    probe_states = [item for item in (console_probe.get("ok"), subscription_probe.get("ok")) if item is not None]
-    probe_ok = None if not probe_states else all(item is True for item in probe_states)
-    result_ok = probe_ok if persistence_error is None else False
-    result_error = _join_probe_errors(console_probe.get("error"), subscription_probe.get("error"))
-    if persistence_error:
-        result_error = f"db persistence failed: {persistence_error}"
-
-    return {
-        "server_id": server["id"],
-        "name": server["name"],
-        "host": server["host"],
-        "console_url": server.get("console_3xui_url"),
-        "subscription_url": server.get("subscription_3xui_url"),
-        "ok": result_ok,
-        "probe_ok": probe_ok,
-        "status_code": _pick_preferred_status(
-            console_probe.get("status_code") if console_probe.get("ok") is False else None,
-            subscription_probe.get("status_code") if subscription_probe.get("ok") is False else None,
-            console_probe.get("status_code"),
-            subscription_probe.get("status_code"),
-        ),
-        "response_ms": _pick_preferred_latency(console_probe.get("response_ms"), subscription_probe.get("response_ms")),
-        "console_ok": console_probe.get("ok"),
-        "console_status_code": console_probe.get("status_code"),
-        "console_response_ms": console_probe.get("response_ms"),
-        "subscription_ok": subscription_probe.get("ok"),
-        "subscription_status_code": subscription_probe.get("status_code"),
-        "subscription_response_ms": subscription_probe.get("response_ms"),
-        "error": result_error,
-        "skipped": probe_ok is None and persistence_error is None,
-        "persistence_error": persistence_error,
-    }
+        return {"ok": False, "error": str(exc), "skipped": False}
 
 
 def _execute_xui_batch(timeout_seconds: int, source: str) -> dict:
@@ -718,8 +694,20 @@ def _run_ssl_probe_for_server(server: Dict[str, Any], timeout_seconds: int, sour
 
     try:
         result = probe_ssl_certificate(server, timeout_seconds=timeout_seconds)
-        update_ssl_status(server_id, result.get("ok", False), result.get("error"), result, source=source)
-        return result
+        details = dict(result.get("details") or {})
+        details["checked_at"] = _coerce_dt(result.get("checked_at"))
+        details.setdefault("endpoint", result.get("endpoint"))
+        payload = {
+            "ssl": {
+                **details,
+                "ok": bool(result.get("ok")),
+                "error": result.get("error"),
+            },
+            "ssl_last_probe": result.get("checked_at"),
+            "ssl_error": result.get("error"),
+        }
+        update_ssl_status(server_id, result.get("ok", False), result.get("error"), payload, source=source)
+        return {**result, "details": details}
     except Exception as exc:  # noqa: BLE001
         logger.exception("SSL probe failed for server_id=%s host=%s", server_id, server.get("host"))
         result = {"ok": False, "error": str(exc), "skipped": False}

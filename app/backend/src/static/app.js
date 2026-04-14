@@ -213,34 +213,44 @@ function buildContourDetails(item) {
   const summary = parseSummary(item.summary_json);
   if (!summary || typeof summary !== 'object') return {};
   const result = {};
-  const http = summary.http || null;
-  const xuiConsole = summary.xui_console || null;
-  const xuiSub = summary.xui_subscription || null;
-  const ssl = summary.ssl || null;
+  const http = summary.http || summary.http_last_probe || null;
+  const xuiConsole = summary.xui_console || summary.xui_console_last_probe || null;
+  const xuiSub = summary.xui_subscription || summary.xui_subscription_last_probe || null;
+  const ssl = summary.ssl || summary.ssl_last_probe || null;
+  const sslDetails = (ssl && ssl.details) || ssl || null;
 
   if (http && http.ok && http.status_code) result.http = `HTTP ${http.status_code}`;
-  else if (http && http.error) result.http = compactProbeDetail(http.error, 24);
+  else if (http && (http.error || summary.http_error)) result.http = compactProbeDetail(http.error || summary.http_error, 24);
 
   if (xuiConsole && xuiConsole.ok && xuiConsole.status_code) result.console = `HTTP ${xuiConsole.status_code}`;
-  else if (xuiConsole && xuiConsole.error) result.console = compactProbeDetail(xuiConsole.error, 24);
+  else if (xuiConsole && (xuiConsole.error || summary.xui_console_error)) result.console = compactProbeDetail(xuiConsole.error || summary.xui_console_error, 24);
 
   if (xuiSub && xuiSub.ok) {
     const parts = [];
     if (xuiSub.status_code) parts.push(`HTTP ${xuiSub.status_code}`);
-    if (Number.isFinite(Number(xuiSub.entries)) && Number(xuiSub.entries) > 0) parts.push(`${Number(xuiSub.entries)} cfg`);
+    if (Number.isFinite(Number(xuiSub.entries_count)) && Number(xuiSub.entries_count) > 0) parts.push(`${Number(xuiSub.entries_count)} cfg`);
+    else if (Number.isFinite(Number(xuiSub.entries)) && Number(xuiSub.entries) > 0) parts.push(`${Number(xuiSub.entries)} cfg`);
     if (xuiSub.encoding) parts.push(String(xuiSub.encoding));
+    if (Array.isArray(xuiSub.entry_types) && xuiSub.entry_types.length) parts.push(xuiSub.entry_types.join(', '));
+    if (xuiSub.profile_title) parts.push(String(xuiSub.profile_title));
+    if (xuiSub.subscription_userinfo) parts.push(compactProbeDetail(String(xuiSub.subscription_userinfo), 36));
     result.sub = parts.join(' · ');
-  } else if (xuiSub && (xuiSub.payload_error || xuiSub.error)) {
-    result.sub = compactProbeDetail(xuiSub.payload_error || xuiSub.error, 28);
+  } else if (xuiSub && (xuiSub.payload_error || xuiSub.error || summary.xui_subscription_error)) {
+    result.sub = compactProbeDetail(xuiSub.payload_error || xuiSub.error || summary.xui_subscription_error, 28);
   }
 
   if (ssl && ssl.ok) {
     const parts = [];
-    if (ssl.self_signed) parts.push('self-signed');
-    if (Number.isFinite(Number(ssl.days_remaining))) parts.push(`${Number(ssl.days_remaining)}d`);
+    const subjectCn = sslDetails && (sslDetails.subject_cn || (sslDetails.subject && sslDetails.subject.commonName) || (sslDetails.certificate_subject && sslDetails.certificate_subject.commonName) || '');
+    const issuerCn = sslDetails && (sslDetails.issuer_cn || (sslDetails.issuer && sslDetails.issuer.commonName) || (sslDetails.certificate_issuer && sslDetails.certificate_issuer.commonName) || '');
+    if (subjectCn) parts.push(String(subjectCn));
+    else if (issuerCn) parts.push(String(issuerCn));
+    if (sslDetails && (sslDetails.self_signed || sslDetails.is_self_signed)) parts.push('self-signed');
+    if (sslDetails && Number.isFinite(Number(sslDetails.days_remaining))) parts.push(`${Number(sslDetails.days_remaining)}d`);
+    if (sslDetails && sslDetails.hostname_matches === false) parts.push('host mismatch');
     result.ssl = parts.join(' · ') || 'valid';
-  } else if (ssl && ssl.error) {
-    result.ssl = compactProbeDetail(ssl.error, 28);
+  } else if (ssl && (ssl.error || summary.ssl_error)) {
+    result.ssl = compactProbeDetail(ssl.error || summary.ssl_error, 28);
   }
 
   return result;

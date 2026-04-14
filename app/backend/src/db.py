@@ -616,7 +616,87 @@ def list_enabled_servers() -> list[dict[str, Any]]:
 
 
 def _status_summary_json(**payload: Any) -> Jsonb:
-    return Jsonb(payload)
+    summary = dict(payload)
+
+    def merge_section(name: str, mapping: dict[str, str]) -> None:
+        section = summary.get(name)
+        if isinstance(section, dict):
+            section_payload = dict(section)
+        else:
+            section_payload = {}
+        for source_key, target_key in mapping.items():
+            if source_key not in summary or summary[source_key] is None:
+                continue
+            value = summary[source_key]
+            if target_key in {"details", "last_probe"} and isinstance(value, dict):
+                merged_value = value.get(name) if isinstance(value.get(name), dict) else value.get("details") if isinstance(value.get("details"), dict) else value
+                if isinstance(merged_value, dict):
+                    for nested_key, nested_value in merged_value.items():
+                        if nested_value is not None:
+                            section_payload[nested_key] = nested_value
+                    checked_at = value.get("checked_at")
+                    if checked_at and section_payload.get("checked_at") is None:
+                        section_payload["checked_at"] = checked_at
+                    continue
+            section_payload[target_key] = value
+        if section_payload:
+            summary[name] = section_payload
+
+    merge_section(
+        "ping",
+        {
+            "ping_ok": "ok",
+            "ping_latency_ms": "latency_ms",
+        },
+    )
+    merge_section(
+        "ssh",
+        {
+            "ssh_ok": "ok",
+            "ssh_latency_ms": "latency_ms",
+        },
+    )
+    merge_section(
+        "http",
+        {
+            "http_ok": "ok",
+            "http_status_code": "status_code",
+            "http_response_ms": "response_ms",
+            "http_error": "error",
+            "http_last_probe": "last_probe",
+        },
+    )
+    merge_section(
+        "xui_console",
+        {
+            "console_3xui_ok": "ok",
+            "console_3xui_http_status": "status_code",
+            "console_3xui_response_ms": "response_ms",
+            "xui_console_details": "details",
+            "xui_console_last_probe": "last_probe",
+            "xui_console_error": "error",
+        },
+    )
+    merge_section(
+        "xui_subscription",
+        {
+            "subscription_3xui_ok": "ok",
+            "subscription_3xui_http_status": "status_code",
+            "subscription_3xui_response_ms": "response_ms",
+            "xui_subscription_details": "details",
+            "xui_subscription_last_probe": "last_probe",
+            "xui_subscription_error": "error",
+        },
+    )
+    merge_section(
+        "ssl",
+        {
+            "ssl_ok": "ok",
+            "ssl_error": "error",
+            "ssl_last_probe": "last_probe",
+        },
+    )
+    return Jsonb(summary)
 
 
 def update_ping_status(server_id: int, ping_ok: bool | None, ping_latency_ms: int | None, error: str | None):
