@@ -2,13 +2,14 @@
 
 Web-панель мониторинга и операционного управления Ubuntu/Linux-серверами.
 
-Текущий подготовленный релиз: **v0.1.32**.
+Текущий подготовленный релиз: **v0.1.33**.
 Последний подтверждённый пользователем рабочий релиз: **v0.1.23**.
 
-## Что уже есть в v0.1.32
+## Что уже есть в v0.1.33
+- hotfix v0.1.33: исправлена несовместимость сохранения HTTP/SSL результатов в БД (`update_http_status`, `update_ssl_status`), из-за которой кроме ping внешний контур выглядел нерабочим;
 - hotfix v0.1.32: устранён критичный crash backend на старте из-за импорта несуществующего `run_xui_check`;
-- довосстановлены импорты в probe-контуре (`urlparse`, `datetime/timezone`, `Any`, `Dict`), чтобы SSL/3x-ui контур не падал уже на загрузке приложения;
-- сохранён сценарий, где 3x-ui и SSL проверяются по `subscription_3xui_url` и её порту, отдельно от SSH;
+- проверки 3x-ui и SSL используют `subscription_3xui_url` и её порт, отдельно от SSH;
+- generic HTTP probe использует `web_url`;
 - inventory серверов и групп;
 - ping / SSH / HTTP проверки;
 - scheduler фоновых проверок с хранением настроек и истории в PostgreSQL;
@@ -32,5 +33,5 @@ Web-панель мониторинга и операционного управ
 - Материалы по релизам: `docs/releases/<version>/`
 
 ## Ближайший следующий блок
-- **v0.1.32** — startup/import hotfix для backend + стабилизация SSL/3x-ui контура
+- **v0.1.33** — DB persistence hotfix для HTTP/SSL/XUI после запуска probe-контуров
 - затем журналы probe-run, операционная диагностика, timezone checks, apt/update flows, reboot actions, maintenance windows

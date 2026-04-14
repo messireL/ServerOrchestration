@@ -670,7 +670,24 @@ def update_ssh_status(server_id: int, ssh_ok: bool | None, ssh_latency_ms: int |
         conn.commit()
 
 
-def update_http_status(server_id: int, ok: bool | None, response_ms: int | None, status_code: int | None, error: str | None, checked_at = None):
+def update_http_status(
+    server_id: int,
+    ok: bool | None = None,
+    response_ms: int | None = None,
+    status_code: int | None = None,
+    error: str | None = None,
+    checked_at = None,
+    http_ok: bool | None = None,
+    http_response_ms: int | None = None,
+    http_status_code: int | None = None,
+):
+    if http_ok is not None or ok is None:
+        ok = http_ok if http_ok is not None else ok
+    if http_response_ms is not None or response_ms is None:
+        response_ms = http_response_ms if http_response_ms is not None else response_ms
+    if http_status_code is not None or status_code is None:
+        status_code = http_status_code if http_status_code is not None else status_code
+
     summary_json = _status_summary_json(
         http_ok=ok,
         http_status_code=status_code,
@@ -990,8 +1007,17 @@ def mark_scheduler_probe_run(probe_type: str) -> dict[str, Any]:
         return row
 
 
-def update_ssl_status(server_id: int, ok: bool | None, error: str | None, payload: dict[str, Any] | None = None):
-    payload = payload or {}
+def update_ssl_status(
+    server_id: int,
+    ok: bool | None,
+    error: str | None,
+    payload: dict[str, Any] | None = None,
+    source: str | None = None,
+):
+    payload = dict(payload or {})
+    if source and "source" not in payload:
+        payload["source"] = source
+
     summary_json = _status_summary_json(
         ssl_ok=ok,
         ssl_error=error,
