@@ -236,14 +236,17 @@ def init_db() -> None:
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ssh_interval_seconds INTEGER NOT NULL DEFAULT 120;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS http_interval_seconds INTEGER NOT NULL DEFAULT 180;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS xui_interval_seconds INTEGER NOT NULL DEFAULT 240;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ssl_interval_seconds INTEGER NOT NULL DEFAULT 300;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ping_timeout_seconds INTEGER NOT NULL DEFAULT 2;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS tcp_timeout_seconds INTEGER NOT NULL DEFAULT 3;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS http_timeout_seconds INTEGER NOT NULL DEFAULT 5;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS xui_timeout_seconds INTEGER NOT NULL DEFAULT 5;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS ssl_timeout_seconds INTEGER NOT NULL DEFAULT 5;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_ping_scheduler_run_at TIMESTAMPTZ;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_ssh_scheduler_run_at TIMESTAMPTZ;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_http_scheduler_run_at TIMESTAMPTZ;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_xui_scheduler_run_at TIMESTAMPTZ;")
+            cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS last_ssl_scheduler_run_at TIMESTAMPTZ;")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
             cur.execute("ALTER TABLE monitor_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();")
             cur.execute(
@@ -599,7 +602,7 @@ def list_enabled_servers() -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, host, ssh_port, ssh_user, web_url, has_3xui, has_ssl_monitoring, has_http_monitoring
+                SELECT id, name, host, ssh_port, ssh_user, web_url, console_3xui_url, subscription_3xui_url, has_3xui, has_ssl_monitoring, has_http_monitoring
                 FROM servers
                 WHERE is_enabled = TRUE
                 ORDER BY id;
@@ -870,36 +873,46 @@ def get_monitor_settings() -> dict[str, Any]:
             cur.execute(
                 """
                 SELECT
-                    id,
                     scheduler_enabled,
                     ping_interval_seconds,
                     ssh_interval_seconds,
                     http_interval_seconds,
                     xui_interval_seconds,
+                    ssl_interval_seconds,
                     ping_timeout_seconds,
                     tcp_timeout_seconds,
                     http_timeout_seconds,
                     xui_timeout_seconds,
+                    ssl_timeout_seconds,
                     last_ping_scheduler_run_at,
                     last_ssh_scheduler_run_at,
                     last_http_scheduler_run_at,
                     last_xui_scheduler_run_at,
-                    created_at,
-                    updated_at
+                    last_ssl_scheduler_run_at
                 FROM monitor_settings
                 WHERE id = 1;
                 """
             )
             row = cur.fetchone()
-            if row:
-                return row
-
         conn.commit()
-    init_db()
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM monitor_settings WHERE id = 1;")
-            return cur.fetchone()
+        return row or {
+            "scheduler_enabled": False,
+            "ping_interval_seconds": 60,
+            "ssh_interval_seconds": 60,
+            "http_interval_seconds": 120,
+            "xui_interval_seconds": 240,
+            "ssl_interval_seconds": 300,
+            "ping_timeout_seconds": 2,
+            "tcp_timeout_seconds": 3,
+            "http_timeout_seconds": 5,
+            "xui_timeout_seconds": 5,
+            "ssl_timeout_seconds": 5,
+            "last_ping_scheduler_run_at": None,
+            "last_ssh_scheduler_run_at": None,
+            "last_http_scheduler_run_at": None,
+            "last_xui_scheduler_run_at": None,
+            "last_ssl_scheduler_run_at": None,
+        }
 
 
 def update_monitor_settings(
@@ -908,26 +921,29 @@ def update_monitor_settings(
     ssh_interval_seconds: int,
     http_interval_seconds: int,
     xui_interval_seconds: int,
+    ssl_interval_seconds: int,
     ping_timeout_seconds: int,
     tcp_timeout_seconds: int,
     http_timeout_seconds: int,
     xui_timeout_seconds: int,
-) -> dict[str, Any]:
+    ssl_timeout_seconds: int,
+):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 UPDATE monitor_settings
-                SET
-                    scheduler_enabled = %s,
+                SET scheduler_enabled = %s,
                     ping_interval_seconds = %s,
                     ssh_interval_seconds = %s,
                     http_interval_seconds = %s,
                     xui_interval_seconds = %s,
+                    ssl_interval_seconds = %s,
                     ping_timeout_seconds = %s,
                     tcp_timeout_seconds = %s,
                     http_timeout_seconds = %s,
                     xui_timeout_seconds = %s,
+                    ssl_timeout_seconds = %s,
                     updated_at = NOW()
                 WHERE id = 1
                 RETURNING *;
@@ -938,10 +954,12 @@ def update_monitor_settings(
                     ssh_interval_seconds,
                     http_interval_seconds,
                     xui_interval_seconds,
+                    ssl_interval_seconds,
                     ping_timeout_seconds,
                     tcp_timeout_seconds,
                     http_timeout_seconds,
                     xui_timeout_seconds,
+                    ssl_timeout_seconds,
                 ),
             )
             row = cur.fetchone()
@@ -956,6 +974,7 @@ def mark_scheduler_probe_run(probe_type: str) -> dict[str, Any]:
         'ssh': 'last_ssh_scheduler_run_at',
         'http': 'last_http_scheduler_run_at',
         'xui': 'last_xui_scheduler_run_at',
+        'ssl': 'last_ssl_scheduler_run_at',
     }
     column = column_map.get(probe_type)
     if not column:
@@ -969,6 +988,36 @@ def mark_scheduler_probe_run(probe_type: str) -> dict[str, Any]:
             row = cur.fetchone()
         conn.commit()
         return row
+
+
+def update_ssl_status(server_id: int, ok: bool | None, error: str | None, payload: dict[str, Any] | None = None):
+    payload = payload or {}
+    summary_json = _status_summary_json(
+        ssl_ok=ok,
+        ssl_error=error,
+        ssl_last_probe=payload,
+        last_error=error,
+        last_probe="ssl",
+    )
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO server_status (server_id, ssl_ok, last_error, last_check_at, updated_at, summary_json)
+                VALUES (%s, %s, %s, NOW(), NOW(), %s)
+                ON CONFLICT (server_id) DO UPDATE SET
+                    ssl_ok = EXCLUDED.ssl_ok,
+                    last_error = CASE
+                        WHEN EXCLUDED.last_error IS NOT NULL AND EXCLUDED.last_error <> '' THEN EXCLUDED.last_error
+                        ELSE server_status.last_error
+                    END,
+                    last_check_at = NOW(),
+                    updated_at = NOW(),
+                    summary_json = COALESCE(server_status.summary_json, '{}'::jsonb) || EXCLUDED.summary_json;
+                """,
+                (server_id, ok, error, summary_json),
+            )
+        conn.commit()
 
 
 def set_alert_active(server_id: int, alert_type: str, severity: str, message: str):
@@ -1275,6 +1324,10 @@ def get_summary() -> dict[str, Any]:
             http_ok_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE http_ok IS TRUE;")
             http_fail_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE http_ok IS FALSE;")
             http_unknown_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE http_ok IS NULL;")
+            xui_ok_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE subscription_3xui_ok IS TRUE OR console_3xui_ok IS TRUE;")
+            xui_fail_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE subscription_3xui_ok IS FALSE OR console_3xui_ok IS FALSE;")
+            ssl_ok_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ssl_ok IS TRUE;")
+            ssl_fail_total = q("SELECT COUNT(*)::INTEGER AS count FROM server_status WHERE ssl_ok IS FALSE;")
             active_alerts_total = q("SELECT COUNT(*)::INTEGER AS count FROM alerts WHERE status = 'active';")
             cur.execute(
                 """
@@ -1282,7 +1335,9 @@ def get_summary() -> dict[str, Any]:
                     scheduler_enabled,
                     last_ping_scheduler_run_at,
                     last_ssh_scheduler_run_at,
-                    last_http_scheduler_run_at
+                    last_http_scheduler_run_at,
+                    last_xui_scheduler_run_at,
+                    last_ssl_scheduler_run_at
                 FROM monitor_settings
                 WHERE id = 1;
                 """
@@ -1303,9 +1358,15 @@ def get_summary() -> dict[str, Any]:
             "http_ok_total": http_ok_total,
             "http_fail_total": http_fail_total,
             "http_unknown_total": http_unknown_total,
+            "xui_ok_total": xui_ok_total,
+            "xui_fail_total": xui_fail_total,
+            "ssl_ok_total": ssl_ok_total,
+            "ssl_fail_total": ssl_fail_total,
             "active_alerts_total": active_alerts_total,
             "scheduler_enabled": monitor.get("scheduler_enabled"),
             "last_ping_scheduler_run_at": monitor.get("last_ping_scheduler_run_at"),
             "last_ssh_scheduler_run_at": monitor.get("last_ssh_scheduler_run_at"),
             "last_http_scheduler_run_at": monitor.get("last_http_scheduler_run_at"),
+            "last_xui_scheduler_run_at": monitor.get("last_xui_scheduler_run_at"),
+            "last_ssl_scheduler_run_at": monitor.get("last_ssl_scheduler_run_at"),
         }

@@ -2,11 +2,11 @@
 
 Web-панель мониторинга и операционного управления Ubuntu/Linux-серверами.
 
-Текущий подготовленный релиз: **v0.1.29**.
+Текущий подготовленный релиз: **v0.1.31**.
 Последний подтверждённый пользователем рабочий релиз: **v0.1.23**.
 
-## Что уже есть в v0.1.29
-- hotfix v0.1.29: синхронизированы kwargs вызовов `update_http_status()` после рефакторинга db-слоя; HTTP probe reset/save path снова сохраняет статус без TypeError;
+## Что уже есть в v0.1.31
+- hotfix v0.1.31: синхронизированы kwargs вызовов `update_http_status()` после рефакторинга db-слоя; HTTP probe reset/save path снова сохраняет статус без TypeError;
 - inventory серверов и групп;
 - ping / SSH / HTTP проверки;
 - scheduler фоновых проверок с хранением настроек и истории в PostgreSQL;
@@ -34,5 +34,5 @@ Web-панель мониторинга и операционного управ
 - Материалы по релизам: `docs/releases/<version>/`
 
 ## Ближайший следующий блок
-- **v0.1.30** — SSL checks
+- **v0.1.31** — SSL checks
 - затем timezone checks, apt/update flows, reboot actions, журналы, maintenance windows

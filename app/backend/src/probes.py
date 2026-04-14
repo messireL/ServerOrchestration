@@ -3,6 +3,7 @@ import shutil
 import socket
 import ssl
 import subprocess
+from datetime import datetime, timezone
 import time
 import urllib.error
 import urllib.request
@@ -159,3 +160,61 @@ def run_http_check(url: str, timeout_seconds: int = 5) -> dict[str, Any]:
         return {"ok": ok, "status_code": status_code, "response_ms": elapsed_ms, "error": None if ok else f"HTTP {status_code}"}
     except Exception as exc:
         return {"ok": False, "status_code": None, "response_ms": None, "error": str(exc)}
+
+
+
+def probe_ssl_certificate(url: str | None, timeout_seconds: int = 5) -> dict[str, Any]:
+    if not url:
+        return {"ok": False, "error": "subscription_3xui_url is not configured"}
+
+    raw = str(url).strip()
+    if not raw:
+        return {"ok": False, "error": "subscription_3xui_url is empty"}
+
+    parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    host = parsed.hostname
+    scheme = (parsed.scheme or "https").lower()
+    port = parsed.port or (443 if scheme == "https" else 443)
+
+    if not host:
+        return {"ok": False, "error": "invalid subscription URL"}
+    if scheme != "https":
+        return {"ok": False, "error": f"SSL probe requires https URL, got {scheme}"}
+
+    started = time.perf_counter()
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection((host, port), timeout=timeout_seconds) as sock:
+            with context.wrap_socket(sock, server_hostname=host) as tls_sock:
+                cert = tls_sock.getpeercert() or {}
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        not_after = cert.get("notAfter")
+        expires_at = None
+        days_remaining = None
+        if not_after:
+            expires_dt = dt.datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=dt.timezone.utc)
+            expires_at = expires_dt.isoformat()
+            days_remaining = max(int((expires_dt - dt.datetime.now(dt.timezone.utc)).total_seconds() // 86400), -1)
+        subject_parts = []
+        for item in cert.get("subject", ()):
+            if isinstance(item, tuple):
+                for key, value in item:
+                    subject_parts.append(f"{key}={value}")
+        return {
+            "ok": True,
+            "latency_ms": latency_ms,
+            "host": host,
+            "port": port,
+            "scheme": scheme,
+            "expires_at": expires_at,
+            "days_remaining": days_remaining,
+            "subject": ", ".join(subject_parts) if subject_parts else None,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "host": host,
+            "port": port,
+            "scheme": scheme,
+            "error": str(exc),
+        }

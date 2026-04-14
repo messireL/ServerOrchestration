@@ -43,6 +43,8 @@ const endpoints = {
   sshRun: '/api/probes/ssh/run',
   httpRun: '/api/probes/http/run',
   allRun: '/api/probes/connectivity/run',
+  xuiRun: '/api/probes/xui/run',
+  sslRun: '/api/probes/ssl/run',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -236,6 +238,8 @@ function renderMonitorSettings(settings) {
   setFormFieldValue(form, 'http_timeout_seconds', settings.http_timeout_seconds ?? 5);
   setFormFieldValue(form, 'xui_interval_seconds', settings.xui_interval_seconds ?? 240);
   setFormFieldValue(form, 'xui_timeout_seconds', settings.xui_timeout_seconds ?? 5);
+  setFormFieldValue(form, 'ssl_interval_seconds', settings.ssl_interval_seconds ?? 300);
+  setFormFieldValue(form, 'ssl_timeout_seconds', settings.ssl_timeout_seconds ?? 5);
 
   if (stats) {
     const items = [
@@ -851,16 +855,52 @@ async function runHttpProbe() {
   }
 }
 
+async function runXuiProbe() {
+  const buttons = ['xuiBtnChecks', 'allChecksBtn'].map($).filter(Boolean);
+  buttons.forEach((btn) => { btn.disabled = true; });
+  try {
+    const result = await fetchJson(endpoints.xuiRun, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    showMessage('success', `Проверка 3x-ui завершена.`);
+    await loadAll();
+    setTab('checks');
+  } catch (error) {
+    showMessage('error', `Не удалось запустить проверку 3x-ui: ${error.message}`);
+  } finally {
+    buttons.forEach((btn) => { btn.disabled = false; });
+  }
+}
+
+async function runSslProbe() {
+  const buttons = ['sslBtnChecks', 'allChecksBtn'].map($).filter(Boolean);
+  buttons.forEach((btn) => { btn.disabled = true; });
+  try {
+    const result = await fetchJson(endpoints.sslRun, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    showMessage('success', `Проверка SSL завершена.`);
+    await loadAll();
+    setTab('checks');
+  } catch (error) {
+    showMessage('error', `Не удалось запустить проверку SSL: ${error.message}`);
+  } finally {
+    buttons.forEach((btn) => { btn.disabled = false; });
+  }
+}
+
 async function runAllChecks() {
-  const buttons = ['allChecksBtn', 'pingBtnChecks', 'sshBtnChecks', 'httpBtnChecks', 'pingBtn'].map($).filter(Boolean);
+  const buttons = ['allChecksBtn', 'pingBtnChecks', 'sshBtnChecks', 'httpBtnChecks', 'xuiBtnChecks', 'sslBtnChecks', 'pingBtn'].map($).filter(Boolean);
   buttons.forEach((btn) => { btn.disabled = true; });
   try {
     const result = await fetchJson(endpoints.allRun, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tcp_timeout_seconds: 3, http_timeout_seconds: 5, xui_timeout_seconds: 5 }),
+      body: JSON.stringify({ tcp_timeout_seconds: 3, http_timeout_seconds: 5, xui_timeout_seconds: 5, ssl_timeout_seconds: 5 }),
     });
-    showMessage('success', `Все проверки завершены: ping=${result.ping.failed} fail, ssh=${result.ssh.failed} fail, http=${result.http.failed} fail, 3x-ui=${result.http.xui_failed} fail`);
+    showMessage('success', `Все проверки завершены: ping=${result.ping.failed} fail, ssh=${result.ssh.failed} fail, http=${result.http.failed} fail, 3x-ui=${result.xui.failed} fail, ssl=${result.ssl.failed} fail`);
     await loadAll();
     setTab('checks');
   } catch (error) {
@@ -883,6 +923,8 @@ async function handleMonitorSettingsSubmit(event) {
     http_timeout_seconds: Number(form.http_timeout_seconds.value || 5),
     xui_interval_seconds: Number(form.xui_interval_seconds.value || 240),
     xui_timeout_seconds: Number(form.xui_timeout_seconds.value || 5),
+    ssl_interval_seconds: Number(form.ssl_interval_seconds.value || 300),
+    ssl_timeout_seconds: Number(form.ssl_timeout_seconds.value || 5),
   };
   const submitBtn = $('monitorSettingsSubmitBtn');
   if (submitBtn) submitBtn.disabled = true;
@@ -1010,6 +1052,8 @@ function wire() {
   $('pingBtnChecks')?.addEventListener('click', runPingProbe);
   $('sshBtnChecks')?.addEventListener('click', runSshProbe);
   $('httpBtnChecks')?.addEventListener('click', runHttpProbe);
+  $('xuiBtnChecks')?.addEventListener('click', runXuiProbe);
+  $('sslBtnChecks')?.addEventListener('click', runSslProbe);
   $('allChecksBtn')?.addEventListener('click', runAllChecks);
   $('serverForm')?.addEventListener('submit', handleServerSubmit);
   $('groupForm')?.addEventListener('submit', handleGroupSubmit);

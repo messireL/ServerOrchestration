@@ -164,6 +164,14 @@
                   <span>Web URL</span>
                   <input type="url" name="web_url" placeholder="https://panel.example.local:2053/" />
                 </label>
+                <label class="field two-cols-span">
+                  <span>URL консоли 3x-ui</span>
+                  <input type="url" name="console_3xui_url" placeholder="https://panel.example.local:2053/" />
+                </label>
+                <label class="field two-cols-span">
+                  <span>URL подписки 3x-ui / SSL</span>
+                  <input type="url" name="subscription_3xui_url" placeholder="https://panel.example.local:2096/sub/abc123" />
+                </label>
               </div>
               <label class="field">
                 <span>Описание</span>
@@ -378,6 +386,14 @@
                   <span>3x-ui timeout, сек</span>
                   <input type="number" name="xui_timeout_seconds" min="1" max="30" required />
                 </label>
+                <label class="field">
+                  <span>SSL interval, сек</span>
+                  <input type="number" name="ssl_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>SSL timeout, сек</span>
+                  <input type="number" name="ssl_timeout_seconds" min="1" max="30" required />
+                </label>
               </div>
               <div class="micro-stats checks-micro-grid scheduler-stats" id="schedulerStats"></div>
               <div class="form-actions">
@@ -390,11 +406,13 @@
             <div class="panel-header split-header">
               <div>
                 <h2>Проверки доступности</h2>
-                <p>Ping, доступность SSH-порта, web URL и 3x-ui console/subscription. SSL идёт следующим функциональным блоком.</p>
+                <p>Ping, SSH, web URL, 3x-ui и SSL-проверка по подписочной ссылке/порту.</p>
               </div>
               <div class="row-actions wrap-actions">
                 <button class="btn btn-secondary" id="sshBtnChecks">Проверить SSH</button>
                 <button class="btn btn-secondary" id="httpBtnChecks">Проверить HTTP/HTTPS</button>
+                <button class="btn btn-secondary" id="xuiBtnChecks">Проверить 3x-ui</button>
+                <button class="btn btn-secondary" id="sslBtnChecks">Проверить SSL</button>
                 <button class="btn btn-primary" id="allChecksBtn">Запустить все проверки</button>
                 <button class="btn btn-ghost" id="pingBtnChecks">Только ping</button>
               </div>

@@ -55,12 +55,13 @@ from src.db import (
     update_server,
     update_ssh_status,
     update_3xui_status,
+    update_ssl_status,
 )
-from src.probes import get_ping_diagnostics, run_http_check, run_ping, run_tcp_connect
+from src.probes import get_ping_diagnostics, probe_ssl_certificate, run_http_check, run_ping, run_tcp_connect, run_xui_check
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.29")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.31")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 SCHEDULER_POLL_SECONDS = int(os.getenv("MONITOR_SCHEDULER_POLL_SECONDS", "5"))
@@ -708,6 +709,79 @@ def _execute_xui_batch(timeout_seconds: int, source: str) -> dict:
 
 
 
+def _run_ssl_probe_for_server(server: Dict[str, Any], timeout_seconds: int, source: str = "scheduler") -> Dict[str, Any]:
+    server_id = server["id"]
+    if not server.get("has_ssl_monitoring"):
+        result = {"ok": False, "error": "SSL monitoring disabled", "skipped": True}
+        update_ssl_status(server_id, False, result["error"], result, source=source)
+        return result
+
+    try:
+        result = probe_ssl_certificate(server, timeout_seconds=timeout_seconds)
+        update_ssl_status(server_id, result.get("ok", False), result.get("error"), result, source=source)
+        return result
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("SSL probe failed for server_id=%s host=%s", server_id, server.get("host"))
+        result = {"ok": False, "error": str(exc), "skipped": False}
+        update_ssl_status(server_id, False, str(exc), result, source=source)
+        return result
+
+
+def _execute_ssl_batch(timeout_seconds: int, source: str = "scheduler") -> Dict[str, Any]:
+    with PROBE_BATCH_LOCK:
+        servers = [server for server in list_enabled_servers() if server.get("has_ssl_monitoring")]
+        results = []
+        ok_count = 0
+        fail_count = 0
+        skipped_count = 0
+        errors = []
+
+        for server in servers:
+            started_at = _utc_now()
+            try:
+                result = _run_ssl_probe_for_server(server, timeout_seconds=timeout_seconds, source=source)
+                result.setdefault("server_id", server["id"])
+                result.setdefault("name", server["name"])
+                result.setdefault("host", server["host"])
+            except Exception as exc:
+                logger.exception("SSL probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
+                result = {
+                    "server_id": server["id"],
+                    "name": server["name"],
+                    "host": server["host"],
+                    "ok": False,
+                    "probe_ok": False,
+                    "error": f"unexpected SSL probe error: {_normalize_probe_error(exc)}",
+                    "skipped": False,
+                    "persistence_error": None,
+                }
+            finished_at = _utc_now()
+            _record_probe_history(result, probe_type="ssl", source=source, started_at=started_at, finished_at=finished_at)
+
+            if result.get("skipped"):
+                skipped_count += 1
+            elif result.get("ok"):
+                ok_count += 1
+            else:
+                fail_count += 1
+                if result.get("error"):
+                    errors.append(str(result["error"]))
+            results.append(result)
+
+        if source == "scheduler":
+            mark_scheduler_probe_run("ssl")
+
+        return {
+            "processed": len(servers),
+            "ok": ok_count,
+            "failed": fail_count,
+            "skipped": skipped_count,
+            "results": results,
+            "errors": errors[:10],
+            "source": source,
+        }
+
+
 def _record_probe_history(result: dict, probe_type: str, source: str, started_at: datetime, finished_at: datetime) -> None:
     try:
         latency_value = result.get("response_ms") if probe_type in {"http", "xui"} else result.get("latency_ms")
@@ -877,12 +951,16 @@ async def _scheduler_loop(stop_event: asyncio.Event) -> None:
                     settings = get_monitor_settings()
                 http_due = _probe_due(settings.get("last_http_scheduler_run_at"), int(settings.get("http_interval_seconds") or 0))
                 xui_due = _probe_due(settings.get("last_xui_scheduler_run_at"), int(settings.get("xui_interval_seconds") or 0))
+                ssl_due = _probe_due(settings.get("last_ssl_scheduler_run_at"), int(settings.get("ssl_interval_seconds") or 0))
                 if http_due:
                     logger.info("Scheduler starting http batch")
                     await asyncio.to_thread(_execute_http_batch, int(settings.get("http_timeout_seconds") or 5), "scheduler")
                 if xui_due:
                     logger.info("Scheduler starting xui batch")
                     await asyncio.to_thread(_execute_xui_batch, int(settings.get("xui_timeout_seconds") or 5), "scheduler")
+                if ssl_due:
+                    logger.info("Scheduler starting ssl batch")
+                    await asyncio.to_thread(_execute_ssl_batch, int(settings.get("ssl_timeout_seconds") or 5), "scheduler")
             await asyncio.to_thread(_evaluate_stale_alerts, alert_settings)
             await asyncio.to_thread(_dispatch_due_reminders, alert_settings)
         except Exception:
@@ -940,6 +1018,7 @@ class ConnectivityProbeRequest(BaseModel):
     tcp_timeout_seconds: int = Field(default=3, ge=1, le=15)
     http_timeout_seconds: int = Field(default=5, ge=1, le=30)
     xui_timeout_seconds: int = Field(default=5, ge=1, le=30)
+    ssl_timeout_seconds: int = Field(default=5, ge=1, le=30)
 
 
 class MonitorSettingsPayload(BaseModel):
@@ -948,10 +1027,12 @@ class MonitorSettingsPayload(BaseModel):
     ssh_interval_seconds: int = Field(default=120, ge=15, le=86400)
     http_interval_seconds: int = Field(default=180, ge=15, le=86400)
     xui_interval_seconds: int = Field(default=240, ge=15, le=86400)
+    ssl_interval_seconds: int = Field(default=300, ge=15, le=86400)
     ping_timeout_seconds: int = Field(default=2, ge=1, le=10)
     tcp_timeout_seconds: int = Field(default=3, ge=1, le=15)
     http_timeout_seconds: int = Field(default=5, ge=1, le=30)
     xui_timeout_seconds: int = Field(default=5, ge=1, le=30)
+    ssl_timeout_seconds: int = Field(default=5, ge=1, le=30)
 
 
 class AlertSettingsPayload(BaseModel):
@@ -1016,10 +1097,12 @@ def api_update_monitor_settings(payload: MonitorSettingsPayload):
             ssh_interval_seconds=payload.ssh_interval_seconds,
             http_interval_seconds=payload.http_interval_seconds,
             xui_interval_seconds=payload.xui_interval_seconds,
+            ssl_interval_seconds=payload.ssl_interval_seconds,
             ping_timeout_seconds=payload.ping_timeout_seconds,
             tcp_timeout_seconds=payload.tcp_timeout_seconds,
             http_timeout_seconds=payload.http_timeout_seconds,
             xui_timeout_seconds=payload.xui_timeout_seconds,
+            ssl_timeout_seconds=payload.ssl_timeout_seconds,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -1224,15 +1307,27 @@ def api_run_http_probe(payload: ConnectivityProbeRequest):
     }
 
 
+@app.post("/api/probes/xui/run")
+def api_run_xui_probe(payload: ConnectivityProbeRequest):
+    return _execute_xui_batch(timeout_seconds=payload.xui_timeout_seconds, source="manual")
+
+
+@app.post("/api/probes/ssl/run")
+def api_run_ssl_probe(payload: ConnectivityProbeRequest):
+    return _execute_ssl_batch(timeout_seconds=payload.ssl_timeout_seconds, source="manual")
+
+
 @app.post("/api/probes/connectivity/run")
 def api_run_connectivity_probe(payload: ConnectivityProbeRequest):
     ping_result = _execute_ping_batch(timeout_seconds=min(payload.tcp_timeout_seconds, 10), source="manual")
     ssh_result = _execute_ssh_batch(timeout_seconds=payload.tcp_timeout_seconds, source="manual")
     http_result = _execute_http_batch(timeout_seconds=payload.http_timeout_seconds, source="manual")
     xui_result = _execute_xui_batch(timeout_seconds=payload.xui_timeout_seconds, source="manual")
+    ssl_result = _execute_ssl_batch(timeout_seconds=payload.ssl_timeout_seconds, source="manual")
     return {
         "ping": ping_result,
         "ssh": ssh_result,
-        "http": {**http_result, "xui_processed": xui_result["processed"], "xui_ok": xui_result["ok"], "xui_failed": xui_result["failed"], "xui_skipped": xui_result["skipped"], "errors": (http_result.get("errors") or [])[:5] + (xui_result.get("errors") or [])[:5]},
+        "http": {**http_result, "xui_processed": xui_result["processed"], "xui_ok": xui_result["ok"], "xui_failed": xui_result["failed"], "xui_skipped": xui_result["skipped"], "ssl_processed": ssl_result["processed"], "ssl_ok": ssl_result["ok"], "ssl_failed": ssl_result["failed"], "ssl_skipped": ssl_result["skipped"], "errors": (http_result.get("errors") or [])[:5] + (xui_result.get("errors") or [])[:5] + (ssl_result.get("errors") or [])[:5]},
         "xui": xui_result,
+        "ssl": ssl_result,
     }
