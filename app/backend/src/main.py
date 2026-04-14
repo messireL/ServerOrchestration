@@ -54,12 +54,13 @@ from src.db import (
     update_ping_status,
     update_server,
     update_ssh_status,
+    update_3xui_status,
 )
 from src.probes import get_ping_diagnostics, run_http_check, run_ping, run_tcp_connect
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.25")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.26")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 SCHEDULER_POLL_SECONDS = int(os.getenv("MONITOR_SCHEDULER_POLL_SECONDS", "5"))
@@ -483,16 +484,241 @@ def _run_http_probe_for_server(server: dict, timeout_seconds: int) -> dict:
     }
 
 
+def _pick_preferred_status(*values: object) -> int | None:
+    for value in values:
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except Exception:
+            continue
+    return None
+
+
+def _pick_preferred_latency(*values: object) -> int | None:
+    numeric: list[int] = []
+    for value in values:
+        if value is None:
+            continue
+        try:
+            numeric.append(int(value))
+        except Exception:
+            continue
+    return max(numeric) if numeric else None
+
+
+def _join_probe_errors(*parts: object) -> str | None:
+    cleaned: list[str] = []
+    for part in parts:
+        normalized = _normalize_probe_error(part)
+        if normalized and normalized not in cleaned:
+            cleaned.append(normalized)
+    if not cleaned:
+        return None
+    return " | ".join(cleaned)[:500]
+
+
+def _run_xui_probe_for_server(server: dict, timeout_seconds: int) -> dict:
+    if not server.get("has_3xui"):
+        try:
+            update_3xui_status(
+                server_id=server["id"],
+                console_ok=None,
+                console_response_ms=None,
+                console_status_code=None,
+                console_error=None,
+                subscription_ok=None,
+                subscription_response_ms=None,
+                subscription_status_code=None,
+                subscription_error=None,
+            )
+        except Exception as exc:
+            logger.exception("3x-ui probe status reset failed for server_id=%s host=%s", server.get("id"), server.get("host"))
+            persistence_error = _normalize_probe_error(exc)
+            return {
+                "server_id": server["id"],
+                "name": server["name"],
+                "host": server["host"],
+                "console_url": server.get("console_3xui_url"),
+                "subscription_url": server.get("subscription_3xui_url"),
+                "ok": False,
+                "probe_ok": None,
+                "status_code": None,
+                "response_ms": None,
+                "console_ok": None,
+                "console_status_code": None,
+                "console_response_ms": None,
+                "subscription_ok": None,
+                "subscription_status_code": None,
+                "subscription_response_ms": None,
+                "error": f"db persistence failed: {persistence_error}",
+                "skipped": False,
+                "persistence_error": persistence_error,
+            }
+
+        return {
+            "server_id": server["id"],
+            "name": server["name"],
+            "host": server["host"],
+            "console_url": server.get("console_3xui_url"),
+            "subscription_url": server.get("subscription_3xui_url"),
+            "ok": None,
+            "probe_ok": None,
+            "status_code": None,
+            "response_ms": None,
+            "console_ok": None,
+            "console_status_code": None,
+            "console_response_ms": None,
+            "subscription_ok": None,
+            "subscription_status_code": None,
+            "subscription_response_ms": None,
+            "error": "3x-ui monitoring disabled",
+            "skipped": True,
+            "persistence_error": None,
+        }
+
+    console_probe = run_http_check(server.get("console_3xui_url") or "", timeout_seconds=timeout_seconds)
+    subscription_probe = run_http_check(server.get("subscription_3xui_url") or "", timeout_seconds=timeout_seconds)
+    persistence_error = None
+
+    try:
+        update_3xui_status(
+            server_id=server["id"],
+            console_ok=console_probe["ok"],
+            console_response_ms=console_probe["response_ms"],
+            console_status_code=console_probe["status_code"],
+            console_error=_normalize_probe_error(console_probe["error"]),
+            subscription_ok=subscription_probe["ok"],
+            subscription_response_ms=subscription_probe["response_ms"],
+            subscription_status_code=subscription_probe["status_code"],
+            subscription_error=_normalize_probe_error(subscription_probe["error"]),
+        )
+        probe_states = [item for item in (console_probe.get("ok"), subscription_probe.get("ok")) if item is not None]
+        if probe_states and all(item is True for item in probe_states):
+            _maybe_notify_resolved_alerts(resolve_alert(server_id=server["id"], alert_type="xui_down"), server.get("name"), server.get("host"))
+        elif any(item is False for item in probe_states):
+            _maybe_notify_new_alert(
+                set_alert_active(
+                    server_id=server["id"],
+                    alert_type="xui_down",
+                    severity="warning",
+                    message=f"3x-ui недоступен: {_join_probe_errors(console_probe.get('error'), subscription_probe.get('error')) or 'request failed'}",
+                ),
+                server.get("name"),
+                server.get("host"),
+            )
+    except Exception as exc:
+        logger.exception("3x-ui probe persistence failed for server_id=%s host=%s", server.get("id"), server.get("host"))
+        persistence_error = _normalize_probe_error(exc)
+
+    probe_states = [item for item in (console_probe.get("ok"), subscription_probe.get("ok")) if item is not None]
+    probe_ok = None if not probe_states else all(item is True for item in probe_states)
+    result_ok = probe_ok if persistence_error is None else False
+    result_error = _join_probe_errors(console_probe.get("error"), subscription_probe.get("error"))
+    if persistence_error:
+        result_error = f"db persistence failed: {persistence_error}"
+
+    return {
+        "server_id": server["id"],
+        "name": server["name"],
+        "host": server["host"],
+        "console_url": server.get("console_3xui_url"),
+        "subscription_url": server.get("subscription_3xui_url"),
+        "ok": result_ok,
+        "probe_ok": probe_ok,
+        "status_code": _pick_preferred_status(
+            console_probe.get("status_code") if console_probe.get("ok") is False else None,
+            subscription_probe.get("status_code") if subscription_probe.get("ok") is False else None,
+            console_probe.get("status_code"),
+            subscription_probe.get("status_code"),
+        ),
+        "response_ms": _pick_preferred_latency(console_probe.get("response_ms"), subscription_probe.get("response_ms")),
+        "console_ok": console_probe.get("ok"),
+        "console_status_code": console_probe.get("status_code"),
+        "console_response_ms": console_probe.get("response_ms"),
+        "subscription_ok": subscription_probe.get("ok"),
+        "subscription_status_code": subscription_probe.get("status_code"),
+        "subscription_response_ms": subscription_probe.get("response_ms"),
+        "error": result_error,
+        "skipped": probe_ok is None and persistence_error is None,
+        "persistence_error": persistence_error,
+    }
+
+
+def _execute_xui_batch(timeout_seconds: int, source: str) -> dict:
+    with PROBE_BATCH_LOCK:
+        servers = list_enabled_servers()
+        results = []
+        ok_count = 0
+        fail_count = 0
+        skipped_count = 0
+        errors: list[str] = []
+
+        for server in servers:
+            started_at = _utc_now()
+            try:
+                result = _run_xui_probe_for_server(server, timeout_seconds)
+            except Exception as exc:
+                logger.exception("3x-ui probe execution crashed for server_id=%s host=%s", server.get("id"), server.get("host"))
+                result = {
+                    "server_id": server["id"],
+                    "name": server["name"],
+                    "host": server["host"],
+                    "console_url": server.get("console_3xui_url"),
+                    "subscription_url": server.get("subscription_3xui_url"),
+                    "ok": False,
+                    "probe_ok": False,
+                    "status_code": None,
+                    "response_ms": None,
+                    "console_ok": None,
+                    "console_status_code": None,
+                    "console_response_ms": None,
+                    "subscription_ok": None,
+                    "subscription_status_code": None,
+                    "subscription_response_ms": None,
+                    "error": f"unexpected 3x-ui probe error: {_normalize_probe_error(exc)}",
+                    "skipped": False,
+                    "persistence_error": None,
+                }
+            finished_at = _utc_now()
+            _record_probe_history(result, probe_type="xui", source=source, started_at=started_at, finished_at=finished_at)
+
+            if result.get("skipped"):
+                skipped_count += 1
+            elif result.get("ok"):
+                ok_count += 1
+            else:
+                fail_count += 1
+                if result.get("error"):
+                    errors.append(str(result["error"]))
+            results.append(result)
+
+        if source == "scheduler":
+            mark_scheduler_probe_run("xui")
+
+        return {
+            "processed": len(servers),
+            "ok": ok_count,
+            "failed": fail_count,
+            "skipped": skipped_count,
+            "results": results,
+            "errors": errors[:10],
+            "source": source,
+        }
+
+
+
 def _record_probe_history(result: dict, probe_type: str, source: str, started_at: datetime, finished_at: datetime) -> None:
     try:
+        latency_value = result.get("response_ms") if probe_type in {"http", "xui"} else result.get("latency_ms")
         insert_probe_history(
             server_id=result["server_id"],
             server_name_snapshot=result.get("name") or f"server-{result['server_id']}",
-            server_host_snapshot=result.get("host") or result.get("url") or "—",
+            server_host_snapshot=result.get("host") or result.get("url") or result.get("console_url") or result.get("subscription_url") or "—",
             probe_type=probe_type,
             source=source,
             ok=result.get("ok"),
-            latency_ms=result.get("latency_ms") if probe_type != "http" else result.get("response_ms"),
+            latency_ms=latency_value,
             status_code=result.get("status_code"),
             error=_normalize_probe_error(result.get("error")),
             started_at=started_at,

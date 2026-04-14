@@ -22,8 +22,8 @@ services:
     build:
       context: ../app/backend
       args:
-        APP_VERSION: 0.1.25
-    image: server-orchestration-backend-local:0.1.25
+        APP_VERSION: 0.1.26
+    image: server-orchestration-backend-local:0.1.26
     container_name: server-orchestration-backend
     restart: unless-stopped
     cap_add:

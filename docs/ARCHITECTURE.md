@@ -10,7 +10,7 @@
 - Быстрые проверки (`ping`, `SSH`, `HTTP/HTTPS`, `3x-ui console`, `3x-ui subscription`) идут отдельным probe-слоем, не через Ansible.
 - Ansible используется как исполнительный слой для операций изменения: apt, timezone, reboot, 3x-ui update/restart, сбор журналов и т.п.
 
-## Актуальное уточнение v0.1.25
+## Актуальное уточнение v0.1.26
 - inventory сервера хранит `web_url`, `console_3xui_url`, `subscription_3xui_url` и профильные флаги мониторинга;
 - probe-слой умеет:
   - ICMP ping;
@@ -27,3 +27,5 @@
 - экран `Проверки` управляет scheduler, ручными прогонами и показывает history-слой;
 - alerting имеет собственные настройки, stale-правило и журнал доставок;
 - внешние уведомления доставляются через Telegram и SMTP email, если каналы заданы в env/Portainer.
+
+- hotfix v0.1.26 восстанавливает отсутствовавший backend batch-runner для 3x-ui, чтобы scheduler и manual probes не падали `NameError`.

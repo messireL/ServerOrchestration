@@ -17,7 +17,7 @@
 - в релизе обязательно описывается, какой compose-файл использовать;
 - описываются шаги проверки контейнеров, health endpoint и логов.
 
-## Дополнение v0.1.25
+## Дополнение v0.1.26
 - Для функциональных релизов мониторинга обязательно обновляются `README.md`, `docs/TZ.md`, `docs/ARCHITECTURE.md`, `docs/TRANSFER_TO_NEW_CHAT.md` и `docs/releases/<version>/*`.
 - Если меняется схема inventory, scheduler или история прогонов, релиз обязан сам доводить старую БД до новой схемы без ручных SQL-правок.
 - Для release мониторинга обязательно проверять `/health`, `/version`, `/api/summary`, `/api/status/servers`, `/api/monitor/settings`, `/api/probes/history` и профильные probe-endpoints.
@@ -26,3 +26,5 @@
 - Для Portainer workflow нельзя создавать новый stack на каждый релиз; обновляется существующий stack, а старые stopped-контейнеры и dangling images периодически чистятся отдельно.
 - Если релиз меняет alerting, нужно отдельно проверять `/api/alerts`, `/api/alerts/settings`, `/api/alerts/deliveries` и `/api/alerts/test`.
 - Для notification-каналов секреты не кладутся в UI или git: они задаются через Portainer env.
+
+- Если релиз включает отдельный xui scheduler-контур, нужно проверять не только UI/API, но и фактическое наличие backend batch-runner-а, чтобы scheduler не падал на `NameError` после выкладки.
