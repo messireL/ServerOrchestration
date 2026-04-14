@@ -205,6 +205,19 @@ function renderChecksQuickStats(summary) {
   `).join('');
 }
 
+
+function setFormFieldValue(form, fieldName, value) {
+  if (!form || !fieldName) return;
+  const field = form.elements?.namedItem(fieldName) || form[fieldName];
+  if (field && 'value' in field) field.value = value ?? '';
+}
+
+function setFormFieldChecked(form, fieldName, checked) {
+  if (!form || !fieldName) return;
+  const field = form.elements?.namedItem(fieldName) || form[fieldName];
+  if (field && 'checked' in field) field.checked = !!checked;
+}
+
 function renderMonitorSettings(settings) {
   const form = $('monitorSettingsForm');
   const stats = $('schedulerStats');
@@ -214,15 +227,15 @@ function renderMonitorSettings(settings) {
     badge.className = settings?.scheduler_enabled ? 'pill pill-success' : 'pill pill-warning';
   }
   if (!form || !settings) return;
-  form.scheduler_enabled.checked = !!settings.scheduler_enabled;
-  form.ping_interval_seconds.value = settings.ping_interval_seconds ?? 60;
-  form.ssh_interval_seconds.value = settings.ssh_interval_seconds ?? 120;
-  form.http_interval_seconds.value = settings.http_interval_seconds ?? 180;
-  form.ping_timeout_seconds.value = settings.ping_timeout_seconds ?? 2;
-  form.tcp_timeout_seconds.value = settings.tcp_timeout_seconds ?? 3;
-  form.http_timeout_seconds.value = settings.http_timeout_seconds ?? 5;
-  form.xui_interval_seconds.value = settings.xui_interval_seconds ?? 240;
-  form.xui_timeout_seconds.value = settings.xui_timeout_seconds ?? 5;
+  setFormFieldChecked(form, 'scheduler_enabled', settings.scheduler_enabled);
+  setFormFieldValue(form, 'ping_interval_seconds', settings.ping_interval_seconds ?? 60);
+  setFormFieldValue(form, 'ssh_interval_seconds', settings.ssh_interval_seconds ?? 120);
+  setFormFieldValue(form, 'http_interval_seconds', settings.http_interval_seconds ?? 180);
+  setFormFieldValue(form, 'ping_timeout_seconds', settings.ping_timeout_seconds ?? 2);
+  setFormFieldValue(form, 'tcp_timeout_seconds', settings.tcp_timeout_seconds ?? 3);
+  setFormFieldValue(form, 'http_timeout_seconds', settings.http_timeout_seconds ?? 5);
+  setFormFieldValue(form, 'xui_interval_seconds', settings.xui_interval_seconds ?? 240);
+  setFormFieldValue(form, 'xui_timeout_seconds', settings.xui_timeout_seconds ?? 5);
 
   if (stats) {
     const items = [
@@ -279,12 +292,12 @@ function renderAlertSettings(settings) {
   const form = $('alertSettingsForm');
   const stats = $('alertChannelStats');
   if (!form || !settings) return;
-  form.notifications_enabled.checked = !!settings.notifications_enabled;
-  form.notify_on_new_alert.checked = !!settings.notify_on_new_alert;
-  form.notify_on_resolved.checked = !!settings.notify_on_resolved;
-  form.stale_alert_enabled.checked = !!settings.stale_alert_enabled;
-  form.stale_after_seconds.value = settings.stale_after_seconds ?? 900;
-  form.reminder_interval_seconds.value = settings.reminder_interval_seconds ?? 3600;
+  setFormFieldChecked(form, 'notifications_enabled', settings.notifications_enabled);
+  setFormFieldChecked(form, 'notify_on_new_alert', settings.notify_on_new_alert);
+  setFormFieldChecked(form, 'notify_on_resolved', settings.notify_on_resolved);
+  setFormFieldChecked(form, 'stale_alert_enabled', settings.stale_alert_enabled);
+  setFormFieldValue(form, 'stale_after_seconds', settings.stale_after_seconds ?? 900);
+  setFormFieldValue(form, 'reminder_interval_seconds', settings.reminder_interval_seconds ?? 3600);
   if (stats) {
     const items = [
       ['Telegram', settings.telegram_configured ? `configured → ${settings.telegram_target || 'chat'}` : 'not configured'],

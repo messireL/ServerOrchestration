@@ -337,7 +337,7 @@
             <div class="panel-header split-header">
               <div>
                 <h2>Планировщик мониторинга</h2>
-                <p>Фоновый runner для ping/SSH/HTTP с настраиваемыми интервалами и таймаутами.</p>
+                <p>Фоновый runner для ping/SSH/HTTP/3x-ui с настраиваемыми интервалами и таймаутами.</p>
               </div>
               <span class="pill pill-info" id="schedulerStateBadge">scheduler: —</span>
             </div>
@@ -370,6 +370,14 @@
                   <span>HTTP timeout, сек</span>
                   <input type="number" name="http_timeout_seconds" min="1" max="30" required />
                 </label>
+                <label class="field">
+                  <span>3x-ui interval, сек</span>
+                  <input type="number" name="xui_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>3x-ui timeout, сек</span>
+                  <input type="number" name="xui_timeout_seconds" min="1" max="30" required />
+                </label>
               </div>
               <div class="micro-stats checks-micro-grid scheduler-stats" id="schedulerStats"></div>
               <div class="form-actions">
@@ -382,7 +390,7 @@
             <div class="panel-header split-header">
               <div>
                 <h2>Проверки доступности</h2>
-                <p>Ping, доступность SSH-порта и web URL. Позже сюда добавим 3x-ui, подписки и SSL.</p>
+                <p>Ping, доступность SSH-порта, web URL и 3x-ui console/subscription. SSL идёт следующим функциональным блоком.</p>
               </div>
               <div class="row-actions wrap-actions">
                 <button class="btn btn-secondary" id="sshBtnChecks">Проверить SSH</button>
@@ -550,9 +558,9 @@
               <div class="roadmap-item"><strong>v0.1.22</strong><span>Интерфейсная полировка inventory и мониторинга: рабочие секции в sidebar, фильтры серверов, сводка проверок и более читаемые статусы.</span></div>
               <div class="roadmap-item"><strong>v0.1.23</strong><span>Функциональный мониторинг: scheduler, интервалы probe-run, история ручных и фоновых прогонов, хранение последних запусков.</span></div>
               <div class="roadmap-item"><strong>v0.1.24</strong><span>Alerting-контур: правила уведомлений, stale-monitoring, Telegram/email delivery и журнал отправок.</span></div>
-              <div class="roadmap-item"><strong>v0.1.26</strong><span>Hotfix: восстановлен backend batch-runner для 3x-ui scheduler/manual probes без ручных правок на сервере.</span></div>
-              <div class="roadmap-item"><strong>v0.1.27</strong><span>SSL-monitoring: срок действия сертификата, issuer, subject и alerts по порогам истечения.</span></div>
-              <div class="roadmap-item"><strong>v0.1.28+</strong><span>Operational-контур через Ansible: timezone, apt, reboot, maintenance windows, service-user и действия из GUI.</span></div>
+              <div class="roadmap-item"><strong>v0.1.27</strong><span>Hotfix: синхронизация frontend monitor settings для 3x-ui и защита от JS-падения dashboard.</span></div>
+              <div class="roadmap-item"><strong>v0.1.28</strong><span>SSL-monitoring: срок действия сертификата, issuer, subject и alerts по порогам истечения.</span></div>
+              <div class="roadmap-item"><strong>v0.1.29+</strong><span>Operational-контур через Ansible: timezone, apt, reboot, maintenance windows, service-user и действия из GUI.</span></div>
             </div>
           </section>
         </div>

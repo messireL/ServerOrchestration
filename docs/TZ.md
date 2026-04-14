@@ -24,7 +24,7 @@
 - связи сервер ↔ группа должны быть обозримыми и управляемыми через GUI;
 - интерфейс должен поддерживать светлую и тёмную тему.
 
-## Актуализировано для v0.1.26
+## Актуализировано для v0.1.27
 - сервер inventory поддерживает поля `host`, `ssh_port`, `ssh_user`, `web_url`, `console_3xui_url`, `subscription_3xui_url` и флаги мониторинга;
 - `web_url` используется для проверки HTTP/HTTPS доступности;
 - 3x-ui console и subscription проверяются отдельно и не смешиваются с обычным `web_url`;
@@ -38,6 +38,7 @@
 - для non-root контейнера ICMP ping обеспечен через `setcap` на бинарнике и `NET_RAW` в runtime-конфигурации.
 
 ## Ближайшие функциональные блоки
-- `0.1.26` — 3x-ui console/subscription checks;
-- `0.1.26` — SSL checks;
+- `0.1.26` — 3x-ui console/subscription checks и scheduler hotfix;
+- `0.1.27` — dashboard/frontend xui settings sync hotfix;
+- `0.1.28` — SSL checks;
 - затем timezone checks, apt update/upgrade/dist-upgrade через Ansible, reboot, maintenance windows, UFW/SSH logs и уведомления email/Telegram.
