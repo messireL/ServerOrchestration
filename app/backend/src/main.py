@@ -10,7 +10,7 @@ import ssl
 import threading
 import urllib.parse
 import urllib.request
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, File, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -57,11 +57,11 @@ from src.db import (
     update_3xui_status,
     update_ssl_status,
 )
-from src.probes import get_ping_diagnostics, probe_ssl_certificate, run_http_check, run_ping, run_tcp_connect, run_xui_check
+from src.probes import get_ping_diagnostics, probe_ssl_certificate, run_http_check, run_ping, run_tcp_connect
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.31")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.32")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 SCHEDULER_POLL_SECONDS = int(os.getenv("MONITOR_SCHEDULER_POLL_SECONDS", "5"))

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from typing import Any
 
 PING_LATENCY_RE = re.compile(r"time\s*[=<]?\s*(?P<latency>[0-9]+(?:[.,][0-9]+)?)", re.IGNORECASE)
@@ -192,9 +193,9 @@ def probe_ssl_certificate(url: str | None, timeout_seconds: int = 5) -> dict[str
         expires_at = None
         days_remaining = None
         if not_after:
-            expires_dt = dt.datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=dt.timezone.utc)
+            expires_dt = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
             expires_at = expires_dt.isoformat()
-            days_remaining = max(int((expires_dt - dt.datetime.now(dt.timezone.utc)).total_seconds() // 86400), -1)
+            days_remaining = max(int((expires_dt - datetime.now(timezone.utc)).total_seconds() // 86400), -1)
         subject_parts = []
         for item in cert.get("subject", ()):
             if isinstance(item, tuple):

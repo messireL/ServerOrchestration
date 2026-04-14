@@ -2,20 +2,18 @@
 
 Web-панель мониторинга и операционного управления Ubuntu/Linux-серверами.
 
-Текущий подготовленный релиз: **v0.1.31**.
+Текущий подготовленный релиз: **v0.1.32**.
 Последний подтверждённый пользователем рабочий релиз: **v0.1.23**.
 
-## Что уже есть в v0.1.31
-- hotfix v0.1.31: синхронизированы kwargs вызовов `update_http_status()` после рефакторинга db-слоя; HTTP probe reset/save path снова сохраняет статус без TypeError;
+## Что уже есть в v0.1.32
+- hotfix v0.1.32: устранён критичный crash backend на старте из-за импорта несуществующего `run_xui_check`;
+- довосстановлены импорты в probe-контуре (`urlparse`, `datetime/timezone`, `Any`, `Dict`), чтобы SSL/3x-ui контур не падал уже на загрузке приложения;
+- сохранён сценарий, где 3x-ui и SSL проверяются по `subscription_3xui_url` и её порту, отдельно от SSH;
 - inventory серверов и групп;
 - ping / SSH / HTTP проверки;
 - scheduler фоновых проверок с хранением настроек и истории в PostgreSQL;
 - alerting + stale monitoring + доставки уведомлений;
-- 3x-ui checks:
-  - отдельные URL для `console_3xui_url` и `subscription_3xui_url`;
-  - отдельные статусы, HTTP-коды и время ответа;
-  - отдельный scheduler-контур для 3x-ui без ручных SQL-правок по БД;
-  - infra: backend image для Portainer переведён на стабильный тег `stable`, добавлены release markers в stack env/labels и обновлён publish workflow GHCR;
+- отдельные URL для `console_3xui_url` и `subscription_3xui_url`;
 - левое меню и разнесение экранов по разделам.
 
 ## Архитектурный стек
@@ -34,5 +32,5 @@ Web-панель мониторинга и операционного управ
 - Материалы по релизам: `docs/releases/<version>/`
 
 ## Ближайший следующий блок
-- **v0.1.31** — SSL checks
-- затем timezone checks, apt/update flows, reboot actions, журналы, maintenance windows
+- **v0.1.32** — startup/import hotfix для backend + стабилизация SSL/3x-ui контура
+- затем журналы probe-run, операционная диагностика, timezone checks, apt/update flows, reboot actions, maintenance windows
