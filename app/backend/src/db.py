@@ -363,7 +363,8 @@ def list_servers() -> list[dict[str, Any]]:
                     st.reboot_required,
                     st.last_error,
                     st.last_check_at,
-                    st.updated_at
+                    st.updated_at,
+                    st.summary_json
                 ORDER BY s.id;
                 """
             )
@@ -404,6 +405,7 @@ def list_server_status() -> list[dict[str, Any]]:
                     st.last_error,
                     st.last_check_at,
                     st.updated_at,
+                    st.summary_json,
                     COALESCE(
                         ARRAY_REMOVE(ARRAY_AGG(DISTINCT g.name), NULL),
                         ARRAY[]::TEXT[]
@@ -437,7 +439,8 @@ def list_server_status() -> list[dict[str, Any]]:
                     st.reboot_required,
                     st.last_error,
                     st.last_check_at,
-                    st.updated_at
+                    st.updated_at,
+                    st.summary_json
                 ORDER BY s.id;
                 """
             )

@@ -172,6 +172,59 @@ function errorCellHtml(value) {
   return `<div class="error-snippet error-snippet-multiline" title="${safe(value)}">${safe(value)}</div>`;
 }
 
+function parseSummary(summary) {
+  if (!summary) return null;
+  if (typeof summary === 'object') return summary;
+  try {
+    return JSON.parse(summary);
+  } catch (error) {
+    return null;
+  }
+}
+
+function compactProbeDetail(value, max = 36) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function buildContourDetails(item) {
+  const summary = parseSummary(item.summary_json);
+  if (!summary || typeof summary !== 'object') return {};
+  const result = {};
+  const http = summary.http || null;
+  const xuiConsole = summary.xui_console || null;
+  const xuiSub = summary.xui_subscription || null;
+  const ssl = summary.ssl || null;
+
+  if (http && http.ok && http.status_code) result.http = `HTTP ${http.status_code}`;
+  else if (http && http.error) result.http = compactProbeDetail(http.error, 24);
+
+  if (xuiConsole && xuiConsole.ok && xuiConsole.status_code) result.console = `HTTP ${xuiConsole.status_code}`;
+  else if (xuiConsole && xuiConsole.error) result.console = compactProbeDetail(xuiConsole.error, 24);
+
+  if (xuiSub && xuiSub.ok) {
+    const parts = [];
+    if (xuiSub.status_code) parts.push(`HTTP ${xuiSub.status_code}`);
+    if (Number.isFinite(Number(xuiSub.entries)) && Number(xuiSub.entries) > 0) parts.push(`${Number(xuiSub.entries)} cfg`);
+    if (xuiSub.encoding) parts.push(String(xuiSub.encoding));
+    result.sub = parts.join(' · ');
+  } else if (xuiSub && (xuiSub.payload_error || xuiSub.error)) {
+    result.sub = compactProbeDetail(xuiSub.payload_error || xuiSub.error, 28);
+  }
+
+  if (ssl && ssl.ok) {
+    const parts = [];
+    if (ssl.self_signed) parts.push('self-signed');
+    if (Number.isFinite(Number(ssl.days_remaining))) parts.push(`${Number(ssl.days_remaining)}d`);
+    result.ssl = parts.join(' · ') || 'valid';
+  } else if (ssl && ssl.error) {
+    result.ssl = compactProbeDetail(ssl.error, 28);
+  }
+
+  return result;
+}
+
 function applyTheme(theme) {
   const normalized = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = normalized;
@@ -486,6 +539,7 @@ function renderServersTable(servers, statuses) {
 
   body.innerHTML = filtered.map((item) => {
     const st = statusMap.get(String(item.id)) || {};
+    const contourDetails = buildContourDetails(st);
     const groups = (item.groups || []).length
       ? `<div class="inline-pills">${item.groups.map((g) => `<span class="pill pill-neutral">${safe(g)}</span>`).join('')}</div>`
       : '<span class="muted">—</span>';
@@ -508,8 +562,9 @@ function renderServersTable(servers, statuses) {
             ${statusPillHtml('3x-ui sub', item.has_3xui ? st.subscription_3xui_ok : null, item.has_3xui ? null : 'off')}
           </div>
           <div class="muted small-text">web: ${webText}</div>
-          <div class="muted small-text">console: ${item.console_3xui_url ? safe(item.console_3xui_url) : '—'}</div>
-          <div class="muted small-text">subscription: ${item.subscription_3xui_url ? safe(item.subscription_3xui_url) : '—'}</div>
+          <div class="muted small-text">console: ${item.console_3xui_url ? safe(item.console_3xui_url) : '—'}${contourDetails.console ? ` · ${safe(contourDetails.console)}` : ''}</div>
+          <div class="muted small-text">subscription: ${item.subscription_3xui_url ? safe(item.subscription_3xui_url) : '—'}${contourDetails.sub ? ` · ${safe(contourDetails.sub)}` : ''}</div>
+          <div class="muted small-text">ssl: ${contourDetails.ssl ? safe(contourDetails.ssl) : '—'}</div>
         </td>
         <td>
           <div>${formatTs(st.last_check_at)}</div>
@@ -584,11 +639,12 @@ function renderStatuses(items) {
   }
   body.innerHTML = filtered.map((item) => {
     const groupText = (item.groups || []).map((g) => safe(g)).join(', ') || 'Без группы';
+    const contourDetails = buildContourDetails(item);
     const probePills = [
-      probeBadgeHtml('HTTP', item.http_ok, { disabled: !item.has_http_monitoring, detail: item.http_status_code ? `HTTP ${item.http_status_code}` : '' }),
-      probeBadgeHtml('3x-ui console', item.console_3xui_ok, { disabled: !item.has_3xui, detail: item.console_3xui_http_status ? `HTTP ${item.console_3xui_http_status}` : '' }),
-      probeBadgeHtml('3x-ui sub', item.subscription_3xui_ok, { disabled: !item.has_3xui, detail: item.subscription_3xui_http_status ? `HTTP ${item.subscription_3xui_http_status}` : '' }),
-      probeBadgeHtml('SSL', item.ssl_ok, { disabled: !item.has_ssl_monitoring })
+      probeBadgeHtml('HTTP', item.http_ok, { disabled: !item.has_http_monitoring, detail: contourDetails.http || (item.http_status_code ? `HTTP ${item.http_status_code}` : '') }),
+      probeBadgeHtml('3x-ui console', item.console_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.console || (item.console_3xui_http_status ? `HTTP ${item.console_3xui_http_status}` : '') }),
+      probeBadgeHtml('3x-ui sub', item.subscription_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.sub || (item.subscription_3xui_http_status ? `HTTP ${item.subscription_3xui_http_status}` : '') }),
+      probeBadgeHtml('SSL', item.ssl_ok, { disabled: !item.has_ssl_monitoring, detail: contourDetails.ssl || '' })
     ].join('');
 
     const latencyPills = [
@@ -612,7 +668,7 @@ function renderStatuses(items) {
         <td><div class="metric-pill-stack">${latencyPills}</div></td>
         <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
         <td><span class="date-chip">${formatTs(item.last_check_at)}</span></td>
-        <td>${errorCellHtml(item.last_error)}</td>
+        <td><span class="cell-soft">${errorCellHtml(item.last_error)}</span></td>
       </tr>
     `;
   }).join('');

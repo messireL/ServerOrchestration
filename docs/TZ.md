@@ -49,3 +49,8 @@
 - `0.1.29` — stable image channel for Portainer backend stack;
 - `0.1.30` — SSL checks;
 - затем timezone checks, apt update/upgrade/dist-upgrade через Ansible, reboot, maintenance windows, UFW/SSH logs и уведомления email/Telegram.
+
+
+## Дополнение v0.1.36
+- Поддерживать в документации полноценную инструкцию по переходу репозитория и окружений на SSH.
+- В статусах доступности показывать не только итоговый флаг, но и компактную детализацию по HTTP/3x-ui/SSL.
