@@ -60,7 +60,7 @@ from src.probes import get_ping_diagnostics, run_http_check, run_ping, run_tcp_c
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.28")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.29")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 SCHEDULER_POLL_SECONDS = int(os.getenv("MONITOR_SCHEDULER_POLL_SECONDS", "5"))
@@ -408,7 +408,7 @@ def _run_ssh_probe_for_server(server: dict, timeout_seconds: int) -> dict:
 def _run_http_probe_for_server(server: dict, timeout_seconds: int) -> dict:
     if not server.get("has_http_monitoring"):
         try:
-            update_http_status(server_id=server["id"], http_ok=None, http_status_code=None, http_response_ms=None, error=None)
+            update_http_status(server_id=server["id"], ok=None, status_code=None, response_ms=None, error=None)
         except Exception as exc:
             logger.exception("HTTP probe status reset failed for server_id=%s host=%s", server.get("id"), server.get("host"))
             return {

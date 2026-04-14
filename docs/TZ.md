@@ -24,7 +24,7 @@
 - связи сервер ↔ группа должны быть обозримыми и управляемыми через GUI;
 - интерфейс должен поддерживать светлую и тёмную тему.
 
-## Актуализировано для v0.1.28
+## Актуализировано для v0.1.29
 - сервер inventory поддерживает поля `host`, `ssh_port`, `ssh_user`, `web_url`, `console_3xui_url`, `subscription_3xui_url` и флаги мониторинга;
 - `web_url` используется для проверки HTTP/HTTPS доступности;
 - 3x-ui console и subscription проверяются отдельно и не смешиваются с обычным `web_url`;
@@ -40,6 +40,6 @@
 ## Ближайшие функциональные блоки
 - `0.1.26` — 3x-ui console/subscription checks и scheduler hotfix;
 - `0.1.27` — dashboard/frontend xui settings sync hotfix;
-- `0.1.28` — stable image channel for Portainer backend stack;
-- `0.1.29` — SSL checks;
+- `0.1.29` — stable image channel for Portainer backend stack;
+- `0.1.30` — SSL checks;
 - затем timezone checks, apt update/upgrade/dist-upgrade через Ansible, reboot, maintenance windows, UFW/SSH logs и уведомления email/Telegram.

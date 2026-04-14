@@ -17,7 +17,7 @@
 - в релизе обязательно описывается, какой compose-файл использовать;
 - описываются шаги проверки контейнеров, health endpoint и логов.
 
-## Дополнение v0.1.28
+## Дополнение v0.1.29
 - Для функциональных релизов мониторинга обязательно обновляются `README.md`, `docs/TZ.md`, `docs/ARCHITECTURE.md`, `docs/TRANSFER_TO_NEW_CHAT.md` и `docs/releases/<version>/*`.
 - Если меняется схема inventory, scheduler или история прогонов, релиз обязан сам доводить старую БД до новой схемы без ручных SQL-правок.
 - Для release мониторинга обязательно проверять `/health`, `/version`, `/api/summary`, `/api/status/servers`, `/api/monitor/settings`, `/api/probes/history` и профильные probe-endpoints.
@@ -31,4 +31,4 @@
 
 - Если backend-схема настроек расширяется новыми полями, релиз обязан одновременно обновлять и соответствующие frontend статические формы, иначе dashboard/checks могут падать уже на загрузке панели.
 
-- Начиная с v0.1.28 Portainer stack должен использовать стабильный operational tag `stable`; версионные теги допускаются для registry и rollback, но не как основной runtime tag в compose.
+- Начиная с v0.1.29 Portainer stack должен использовать стабильный operational tag `stable`; версионные теги допускаются для registry и rollback, но не как основной runtime tag в compose.
