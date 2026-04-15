@@ -1,4 +1,5 @@
 import base64
+import html
 import ipaddress
 import re
 import shutil
@@ -11,7 +12,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 PING_LATENCY_RE = re.compile(r"time\s*[=<]?\s*(?P<latency>[0-9]+(?:[.,][0-9]+)?)", re.IGNORECASE)
 BROWSER_HEADERS = {
@@ -23,6 +24,9 @@ BROWSER_HEADERS = {
     "Upgrade-Insecure-Requests": "1",
     "Connection": "close",
 }
+
+SUBSCRIPTION_URI_RE = re.compile(r'''(?P<uri>(?:vmess|vless|trojan|ss|ssr|hysteria|hysteria2|hy2|tuic|wireguard)://[^\s"'<>]+)''', re.IGNORECASE)
+BASE64_BLOB_RE = re.compile(r"[A-Za-z0-9+/_-]{120,}={0,2}")
 
 
 def _squash_probe_text(*parts: str, limit: int = 500) -> str:
@@ -283,6 +287,80 @@ def _looks_like_subscription_payload(text: str) -> tuple[bool, int]:
     return bool(matches), len(matches)
 
 
+def _decode_base64_subscription_candidate(value: str) -> tuple[bool, dict, str | None]:
+    compact = "".join((value or "").split())
+    if not compact:
+        return False, {"encoding": "empty", "entries": 0}, None
+
+    candidates: list[str] = []
+    candidates.append(compact + ("=" * (-len(compact) % 4)))
+    if "-" in compact or "_" in compact:
+        normalized = compact.replace("-", "+").replace("_", "/")
+        candidates.append(normalized + ("=" * (-len(normalized) % 4)))
+
+    for encoded in candidates:
+        try:
+            decoded_bytes = base64.b64decode(encoded, validate=False)
+        except Exception:
+            continue
+        decoded_text = decoded_bytes.decode("utf-8", errors="ignore").strip()
+        ok_decoded, decoded_entries = _looks_like_subscription_payload(decoded_text)
+        if ok_decoded:
+            entry_types = sorted({line.split("://", 1)[0].lower() for line in decoded_text.splitlines() if "://" in line})
+            return True, {
+                "encoding": "base64",
+                "entries": decoded_entries,
+                "decoded_bytes": len(decoded_bytes),
+                "entry_types": entry_types,
+            }, None
+
+    return False, {"encoding": "base64-invalid", "entries": 0}, None
+
+
+def _extract_subscription_payload_from_html(text: str) -> tuple[bool, dict, str | None]:
+    source = html.unescape(text or "").strip()
+    if not source:
+        return False, {"encoding": "html", "entries": 0}, "subscription html page is empty"
+
+    variants = [source]
+    decoded_once = unquote(source)
+    if decoded_once != source:
+        variants.append(decoded_once)
+
+    discovered_uris: list[str] = []
+    entry_types: set[str] = set()
+    for variant in variants:
+        for match in SUBSCRIPTION_URI_RE.finditer(variant):
+            uri = match.group("uri").strip().rstrip("'\"<>)],;")
+            if not uri:
+                continue
+            discovered_uris.append(uri)
+            entry_types.add(uri.split("://", 1)[0].lower())
+    unique_uris = list(dict.fromkeys(discovered_uris))
+    if unique_uris:
+        return True, {
+            "encoding": "html-embedded",
+            "entries": len(unique_uris),
+            "entry_types": sorted(entry_types),
+            "html_embedded": True,
+        }, None
+
+    tested_blobs: set[str] = set()
+    for variant in variants:
+        for blob in BASE64_BLOB_RE.findall(variant):
+            if blob in tested_blobs:
+                continue
+            tested_blobs.add(blob)
+            ok_blob, blob_details, _blob_error = _decode_base64_subscription_candidate(blob)
+            if ok_blob:
+                details = dict(blob_details)
+                details["encoding"] = "html-base64"
+                details["html_embedded"] = True
+                return True, details, None
+
+    return False, {"encoding": "html", "entries": 0}, "subscription endpoint returned HTML page without embedded share data"
+
+
 def _decode_subscription_payload(raw_body: bytes) -> tuple[bool, dict, str | None]:
     text = raw_body.decode("utf-8", errors="ignore").strip()
     if not text:
@@ -298,29 +376,17 @@ def _decode_subscription_payload(raw_body: bytes) -> tuple[bool, dict, str | Non
 
     compact = "".join(text.split())
     if compact:
-        candidates: list[str] = []
-        candidates.append(compact + ("=" * (-len(compact) % 4)))
-        if "-" in compact or "_" in compact:
-            normalized = compact.replace("-", "+").replace("_", "/")
-            candidates.append(normalized + ("=" * (-len(normalized) % 4)))
-        for encoded in candidates:
-            try:
-                decoded_bytes = base64.b64decode(encoded, validate=False)
-            except Exception:
-                continue
-            decoded_text = decoded_bytes.decode("utf-8", errors="ignore").strip()
-            ok_decoded, decoded_entries = _looks_like_subscription_payload(decoded_text)
-            if ok_decoded:
-                return True, {
-                    "encoding": "base64",
-                    "entries": decoded_entries,
-                    "payload_bytes": len(raw_body),
-                    "decoded_bytes": len(decoded_bytes),
-                }, None
+        ok_base64, base64_details, _base64_error = _decode_base64_subscription_candidate(compact)
+        if ok_base64:
+            details = dict(base64_details)
+            details["payload_bytes"] = len(raw_body)
+            return True, details, None
 
     lowered = text.lower()
     if "<html" in lowered or "<!doctype html" in lowered:
-        return False, {"encoding": "html", "entries": 0, "payload_bytes": len(raw_body)}, "subscription endpoint returned HTML instead of subscription data"
+        ok_html, html_details, html_error = _extract_subscription_payload_from_html(text)
+        html_details["payload_bytes"] = len(raw_body)
+        return ok_html, html_details, html_error
     return False, {"encoding": "unknown", "entries": 0, "payload_bytes": len(raw_body)}, "subscription payload is not a valid 3x-ui share list"
 
 
@@ -431,6 +497,17 @@ def run_3xui_subscription_check(url: str | None, timeout_seconds: int = 5) -> di
     profile_web_page_url = headers.get("profile-web-page-url") or headers.get("profile_web_page_url")
     if profile_web_page_url:
         details["profile_web_page_url"] = profile_web_page_url
+
+    header_has_subscription_info = any(
+        key in details
+        for key in ("used_bytes", "total_bytes", "remaining_bytes", "expires_at", "days_remaining")
+    )
+    if not payload_ok and header_has_subscription_info and str(details.get("encoding") or "").startswith("html"):
+        payload_ok = True
+        details["payload_warning"] = payload_error
+        payload_error = None
+        details["encoding"] = "html+headers"
+
     if payload_error:
         details["payload_error"] = payload_error
     return {
