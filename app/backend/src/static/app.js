@@ -225,15 +225,27 @@ function compactProbeDetail(value, max = 36) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+function flattenProbePayload(probe) {
+  if (!probe || typeof probe !== 'object') return probe || null;
+  const details = probe.details && typeof probe.details === 'object' ? probe.details : null;
+  const flat = details ? { ...details } : {};
+  Object.entries(probe).forEach(([key, value]) => {
+    if (key === 'details') return;
+    if (value === undefined || value === null || value === '') return;
+    flat[key] = value;
+  });
+  return flat;
+}
+
 function buildContourDetails(item) {
   const summary = parseSummary(item.summary_json);
   if (!summary || typeof summary !== 'object') return {};
   const result = {};
-  const http = summary.http || summary.http_last_probe || null;
-  const xuiConsole = summary.xui_console || summary.xui_console_last_probe || null;
-  const xuiSub = summary.xui_subscription || summary.xui_subscription_last_probe || null;
-  const ssl = summary.ssl || summary.ssl_last_probe || null;
-  const sslDetails = (ssl && ssl.details) || ssl || null;
+  const http = flattenProbePayload(summary.http || summary.http_last_probe || null);
+  const xuiConsole = flattenProbePayload(summary.xui_console || summary.xui_console_last_probe || null);
+  const xuiSub = flattenProbePayload(summary.xui_subscription || summary.xui_subscription_last_probe || null);
+  const ssl = flattenProbePayload(summary.ssl || summary.ssl_last_probe || null);
+  const sslDetails = ssl || null;
 
   if (http && http.ok && http.status_code) result.http = `HTTP ${http.status_code}`;
   else if (http && (http.error || summary.http_error)) result.http = compactProbeDetail(http.error || summary.http_error, 24);
