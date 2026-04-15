@@ -51,6 +51,41 @@ const $ = (id) => document.getElementById(id);
 const q = (sel) => document.querySelector(sel);
 const qa = (sel) => Array.from(document.querySelectorAll(sel));
 
+function showFrontendFatal(message) {
+  try {
+    if (document.readyState === 'loading') return;
+    const stack = $('messageStack');
+    if (stack) {
+      showMessage('error', `Ошибка фронтенда: ${message}`);
+      return;
+    }
+    const banner = document.createElement('div');
+    banner.className = 'message error';
+    banner.style.position = 'fixed';
+    banner.style.top = '12px';
+    banner.style.right = '12px';
+    banner.style.zIndex = '9999';
+    banner.textContent = `Ошибка фронтенда: ${message}`;
+    document.body.appendChild(banner);
+  } catch (e) {
+    console.error('Unable to show frontend error banner', e);
+  }
+}
+
+window.addEventListener('error', (event) => {
+  const message = event?.error?.message || event?.message || 'unknown frontend error';
+  console.error('Frontend error:', event?.error || event);
+  showFrontendFatal(message);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event?.reason;
+  const message = reason?.message || String(reason || 'unknown promise rejection');
+  console.error('Frontend unhandled rejection:', reason);
+  showFrontendFatal(message);
+});
+
+
 function safe(value) {
   if (value === null || value === undefined) return '—';
   return String(value)
@@ -1246,4 +1281,4 @@ async function init() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => { init().catch((error) => { console.error('Init failed', error); showFrontendFatal(error?.message || 'init failed'); }); });

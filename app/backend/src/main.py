@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from fastapi import FastAPI, File, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
 from pydantic import BaseModel, Field
 
 import src.db as db
@@ -61,7 +62,7 @@ from src.probes import get_ping_diagnostics, probe_ssl_certificate, run_3xui_sub
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.48")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.49")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 SCHEDULER_POLL_SECONDS = int(os.getenv("MONITOR_SCHEDULER_POLL_SECONDS", "5"))
@@ -1039,7 +1040,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Server Orchestration API", version=APP_VERSION, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+class NoCacheStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+app.mount("/static", NoCacheStaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 class ServerPayload(BaseModel):
@@ -1098,7 +1109,7 @@ class AlertSettingsPayload(BaseModel):
 
 @app.get("/", response_class=FileResponse)
 def root():
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"})
 
 
 @app.get("/health")
