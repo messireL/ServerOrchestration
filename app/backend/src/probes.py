@@ -78,6 +78,15 @@ def _parse_data_size(value: str | None) -> int | None:
     return int(number * factor)
 
 
+def _strip_html_fragment(value: str) -> str:
+    text = re.sub(r'(?is)<br\s*/?>', '\n', value or '')
+    text = re.sub(r'(?is)<[^>]+>', ' ', text)
+    text = html.unescape(text)
+    text = text.replace('\xa0', ' ')
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
 def _extract_html_text_lines(source: str) -> list[str]:
     text = re.sub(r'(?is)<(script|style|noscript).*?>.*?</\1>', ' ', source)
     text = re.sub(r'(?is)<br\s*/?>', '\n', text)
@@ -94,19 +103,31 @@ def _extract_html_text_lines(source: str) -> list[str]:
 
 
 def _parse_subscription_profile_from_html(source: str) -> dict[str, Any]:
-    lines = _extract_html_text_lines(source)
-    if not lines:
-        return {}
-
     parsed: dict[str, Any] = {}
-    for index, line in enumerate(lines[:-1]):
-        alias = _HTML_LABEL_ALIASES.get(_normalize_html_label(line))
-        if not alias:
+
+    row_pattern = re.compile(r'(?is)<tr[^>]*>\s*(.*?)\s*</tr>')
+    cell_pattern = re.compile(r'(?is)<t[dh][^>]*>\s*(.*?)\s*</t[dh]>')
+    for row_match in row_pattern.finditer(source or ''):
+        row_html = row_match.group(1)
+        cells = [_strip_html_fragment(cell) for cell in cell_pattern.findall(row_html)]
+        if len(cells) < 2:
             continue
-        value = lines[index + 1].strip()
-        if not value:
-            continue
-        parsed[alias] = value
+        alias = _HTML_LABEL_ALIASES.get(_normalize_html_label(cells[0]))
+        if alias and cells[1]:
+            parsed[alias] = cells[1]
+
+    if not parsed:
+        lines = _extract_html_text_lines(source)
+        if not lines:
+            return {}
+        for index, line in enumerate(lines[:-1]):
+            alias = _HTML_LABEL_ALIASES.get(_normalize_html_label(line))
+            if not alias:
+                continue
+            value = lines[index + 1].strip()
+            if not value:
+                continue
+            parsed[alias] = value
 
     if not parsed:
         return {}

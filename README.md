@@ -2,10 +2,10 @@
 
 Web-панель мониторинга и операционного управления Ubuntu/Linux-серверами.
 
-Текущий подготовленный релиз: **v0.1.46**.
+Текущий подготовленный релиз: **v0.1.47**.
 Последний подтверждённый пользователем рабочий релиз: **v0.1.38**.
 
-## Что уже есть в v0.1.46
+## Что уже есть в v0.1.47
 - починен контур сохранения результатов 3x-ui probes и устранён crash на `update_3xui_status(...)`;
 - 3x-ui subscription probe теперь вытаскивает traffic / total / expiry / profile metadata из HTTP headers и payload;
 - SSL probe сохраняет и показывает сертификатные детали понятнее, включая self-signed сценарий;
@@ -28,8 +28,8 @@ Web-панель мониторинга и операционного управ
 - Материалы по релизам: `docs/releases/<version>/`
 
 ## Ближайший следующий блок
-- **v0.1.46** — стабилизация persisted probe details для 3x-ui/SSL и возврат к функциональному контуру;
+- **v0.1.47** — стабилизация persisted probe details для 3x-ui/SSL и возврат к функциональному контуру;
 - дальше: операционные действия по серверам, Ansible inventory/runner, apt/update flows, reboot/maintenance windows, audit trail действий оператора.
 
 ### Monitoring hotfix notes
-Current next build after v0.1.46 focuses on persisted 3x-ui subscription details, SSL certificate metadata, and richer probe history output for monitoring.
+Current next build after v0.1.47 focuses on persisted 3x-ui subscription details, SSL certificate metadata, and richer probe history output for monitoring.
