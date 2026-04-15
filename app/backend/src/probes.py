@@ -327,6 +327,12 @@ def _extract_subscription_payload_from_html(text: str) -> tuple[bool, dict, str 
     if decoded_once != source:
         variants.append(decoded_once)
 
+    merged_profile_details: dict[str, Any] = {}
+    for variant in variants:
+        profile_details = _parse_subscription_profile_from_html(variant)
+        if profile_details:
+            merged_profile_details.update(profile_details)
+
     discovered_uris: list[str] = []
     entry_types: set[str] = set()
     for variant in variants:
@@ -343,6 +349,7 @@ def _extract_subscription_payload_from_html(text: str) -> tuple[bool, dict, str 
             "entries": len(unique_uris),
             "entry_types": sorted(entry_types),
             "html_embedded": True,
+            **merged_profile_details,
         }, None
 
     tested_blobs: set[str] = set()
@@ -356,18 +363,17 @@ def _extract_subscription_payload_from_html(text: str) -> tuple[bool, dict, str 
                 details = dict(blob_details)
                 details["encoding"] = "html-base64"
                 details["html_embedded"] = True
+                details.update({k: v for k, v in merged_profile_details.items() if k not in details})
                 return True, details, None
 
-    for variant in variants:
-        profile_details = _parse_subscription_profile_from_html(variant)
-        if profile_details:
-            details = {
-                "encoding": "html-profile",
-                "entries": 0,
-                "html_embedded": True,
-                **profile_details,
-            }
-            return True, details, None
+    if merged_profile_details:
+        details = {
+            "encoding": "html-profile",
+            "entries": 0,
+            "html_embedded": True,
+            **merged_profile_details,
+        }
+        return True, details, None
 
     return False, {"encoding": "html", "entries": 0}, "subscription endpoint returned HTML page without embedded share data"
 
