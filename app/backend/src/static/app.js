@@ -255,20 +255,15 @@ function buildContourDetails(item) {
 
   if (xuiSub && xuiSub.ok) {
     const parts = [];
+    if (xuiSub.status_code) parts.push(`HTTP ${xuiSub.status_code}`);
     if (Number.isFinite(Number(xuiSub.entries_count)) && Number(xuiSub.entries_count) > 0) parts.push(`${Number(xuiSub.entries_count)} cfg`);
     else if (Number.isFinite(Number(xuiSub.entries)) && Number(xuiSub.entries) > 0) parts.push(`${Number(xuiSub.entries)} cfg`);
     const usedBytes = Number(xuiSub.used_bytes);
     const totalBytes = Number(xuiSub.total_bytes);
-    const hasTraffic = Number.isFinite(usedBytes) || Number.isFinite(totalBytes);
-    if (hasTraffic) {
+    if (Number.isFinite(usedBytes) || Number.isFinite(totalBytes)) {
       const usedLabel = Number.isFinite(usedBytes) ? formatBytesCompact(usedBytes) : '0 B';
       const totalLabel = Number.isFinite(totalBytes) && totalBytes > 0 ? formatBytesCompact(totalBytes) : '∞';
-      parts.push(`traffic ${usedLabel}/${totalLabel}`);
-    } else {
-      const downloadedBytes = Number(xuiSub.downloaded_bytes);
-      const uploadedBytes = Number(xuiSub.uploaded_bytes);
-      if (Number.isFinite(downloadedBytes)) parts.push(`down ${formatBytesCompact(downloadedBytes)}`);
-      if (Number.isFinite(uploadedBytes)) parts.push(`up ${formatBytesCompact(uploadedBytes)}`);
+      parts.push(`${usedLabel}/${totalLabel}`);
     }
     const remainingBytes = Number(xuiSub.remaining_bytes);
     if (Number.isFinite(remainingBytes) && remainingBytes >= 0) parts.push(`rem ${formatBytesCompact(remainingBytes)}`);
@@ -277,10 +272,8 @@ function buildContourDetails(item) {
     else if (xuiSub.expires_unlimited) parts.push('exp ∞');
     else if (xuiSub.expires_text) parts.push(`exp ${String(xuiSub.expires_text)}`);
     if (xuiSub.profile_status) parts.push(String(xuiSub.profile_status));
-    const hasProfileInfo = parts.length > 0;
-    if (!hasProfileInfo && xuiSub.status_code) parts.push(`HTTP ${xuiSub.status_code}`);
-    if (!hasProfileInfo && xuiSub.encoding) parts.push(String(xuiSub.encoding));
-    if (!hasProfileInfo && Array.isArray(xuiSub.entry_types) && xuiSub.entry_types.length) parts.push(xuiSub.entry_types.join(', '));
+    if (xuiSub.encoding) parts.push(String(xuiSub.encoding));
+    if (Array.isArray(xuiSub.entry_types) && xuiSub.entry_types.length) parts.push(xuiSub.entry_types.join(', '));
     if (xuiSub.profile_title) parts.push(String(xuiSub.profile_title));
     result.sub = parts.join(' · ');
   } else if (xuiSub && (xuiSub.payload_error || xuiSub.error || summary.xui_subscription_error)) {
