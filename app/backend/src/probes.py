@@ -182,16 +182,16 @@ class _SubscriptionHTMLExtractor(HTMLParser):
 
 
 _HTML_FIELD_PATTERNS: dict[str, tuple[str, ...]] = {
-    "subscription_id": ("id подписки", "subscription id", "client id", "sub id", "email", "id"),
+    "subscription_id": ("id подписки", "subscription id", "client id", "sub id", "email"),
     "profile_status": ("статус", "status", "state"),
-    "downloaded_bytes": ("загружено", "downloaded", "downloaded bytes", "download", "down"),
-    "uploaded_bytes": ("отправлено", "uploaded", "uploaded bytes", "upload", "up"),
-    "used_bytes": ("использование", "usage", "used", "used traffic", "traffic used"),
-    "total_bytes": ("общий лимит", "total limit", "лимит", "total", "traffic total"),
-    "remaining_bytes": ("остаток", "remaining", "remain", "remaining traffic"),
-    "last_seen_text": ("был(а) в сети", "был в сети", "last online", "last seen", "online at", "last_online"),
+    "downloaded_bytes": ("загружено", "downloaded", "downloaded bytes", "download", "down", "downloadbyte"),
+    "uploaded_bytes": ("отправлено", "uploaded", "uploaded bytes", "upload", "up", "uploadbyte"),
+    "used_bytes": ("использование", "usage", "used", "used traffic", "traffic used", "usedbyte"),
+    "total_bytes": ("общий лимит", "total limit", "лимит", "total", "traffic total", "totalbyte"),
+    "remaining_bytes": ("остаток", "remaining", "remain", "remaining traffic", "remained"),
+    "last_seen_text": ("был(а) в сети", "был в сети", "last online", "last seen", "online at", "last_online", "lastonline"),
     "expires_text": ("срок действия", "expiry", "expires", "expire", "expired at"),
-    "profile_title": ("информация о подписке", "subscription info", "subscription information", "title"),
+    "profile_title": ("информация о подписке", "subscription info", "subscription information"),
 }
 
 
@@ -210,10 +210,69 @@ def _match_html_field(label: str | None) -> str | None:
     return None
 
 
+def _looks_like_html_or_code(value: str) -> bool:
+    lowered = (value or "").casefold()
+    if not lowered:
+        return True
+    return any(
+        token in lowered
+        for token in (
+            "<!doctype",
+            "<html",
+            "</",
+            "window.",
+            "document.",
+            "function(",
+            "const ",
+            "let ",
+            "var ",
+            "subscription.title",
+        )
+    )
+
+
+def _is_profile_label_value(value: str) -> bool:
+    normalized = _normalize_html_label(value)
+    if not normalized:
+        return False
+    return _match_html_field(normalized) is not None
+
+
 def _apply_html_profile_value(parsed: dict[str, Any], field: str, value: str | None) -> None:
-    cleaned = _strip_html_fragment(value)
-    if cleaned:
-        parsed[field] = cleaned
+    raw_value = (value or "").strip()
+    cleaned = _strip_html_fragment(raw_value)
+    if not cleaned:
+        return
+    if len(cleaned) > 180:
+        return
+    if _looks_like_html_or_code(raw_value) or _looks_like_html_or_code(cleaned):
+        return
+    if field == "profile_title":
+        if _is_profile_label_value(cleaned):
+            return
+        lowered = cleaned.casefold()
+        if lowered in {"subscription information", "subscription info", "информация о подписке"}:
+            return
+    parsed[field] = cleaned
+
+
+def _extract_profile_from_lines(lines: list[str]) -> dict[str, Any]:
+    parsed: dict[str, Any] = {}
+    cleaned = [_strip_html_fragment(line) for line in lines if _strip_html_fragment(line)]
+    for idx, line in enumerate(cleaned):
+        field = _match_html_field(line)
+        if field:
+            next_value = cleaned[idx + 1] if idx + 1 < len(cleaned) else ""
+            if next_value and not _match_html_field(next_value):
+                _apply_html_profile_value(parsed, field, next_value)
+            continue
+
+        separator_match = re.match(r"^(.+?)\s*[:：]\s*(.+)$", line)
+        if separator_match:
+            field = _match_html_field(separator_match.group(1))
+            if field:
+                _apply_html_profile_value(parsed, field, separator_match.group(2))
+    return parsed
 
 
 def _extract_profile_from_cells(cells: list[str]) -> dict[str, Any]:
@@ -222,7 +281,9 @@ def _extract_profile_from_cells(cells: list[str]) -> dict[str, Any]:
     for idx in range(len(cleaned) - 1):
         field = _match_html_field(cleaned[idx])
         if field:
-            _apply_html_profile_value(parsed, field, cleaned[idx + 1])
+            next_value = cleaned[idx + 1]
+            if not _match_html_field(next_value):
+                _apply_html_profile_value(parsed, field, next_value)
     return parsed
 
 
@@ -251,30 +312,51 @@ def _extract_profile_from_blob(text: str) -> dict[str, Any]:
     return parsed
 
 
+def _search_script_value(raw: str, *aliases: str) -> str | None:
+    for alias in aliases:
+        escaped = re.escape(alias)
+        match = re.search(
+            rf'(?:["\'])?{escaped}(?:["\'])?\s*[:=]\s*(?:(["\'])(.*?)\1|([^,\n;}}{{<]+))',
+            raw,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not match:
+            continue
+        value = match.group(2) or match.group(3)
+        if value:
+            return value.strip()
+    return None
+
+
 def _extract_profile_from_script(html_source: str) -> dict[str, Any]:
     parsed: dict[str, Any] = {}
     raw = html_source or ""
-    patterns = {
-        "downloaded_bytes": [r'"(?:download|down|downloaded)"\s*[:=]\s*"?([^",;}{]+)'],
-        "uploaded_bytes": [r'"(?:upload|up|uploaded)"\s*[:=]\s*"?([^",;}{]+)'],
-        "used_bytes": [r'"(?:usage|used|usedTraffic|trafficUsed)"\s*[:=]\s*"?([^",;}{]+)'],
-        "total_bytes": [r'"(?:total|totalTraffic|limit|trafficTotal)"\s*[:=]\s*"?([^",;}{]+)'],
-        "remaining_bytes": [r'"(?:remaining|remainingTraffic|remain)"\s*[:=]\s*"?([^",;}{]+)'],
-        "expires_text": [r'"(?:expire|expiry|expires|expiryTime|expireDate)"\s*[:=]\s*"?([^",;}{]+)'],
-        "profile_status": [r'"(?:status|state)"\s*[:=]\s*"?([^",;}{]+)'],
-        "subscription_id": [r'"(?:email|subscriptionId|subId|clientId|id)"\s*[:=]\s*"?([^",;}{]+)'],
-        "last_seen_text": [r'"(?:lastSeen|lastOnline|onlineAt)"\s*[:=]\s*"?([^",;}{]+)'],
-        "profile_title": [r'"(?:profileTitle|title)"\s*[:=]\s*"?([^",;}{]+)'],
+
+    field_aliases: dict[str, tuple[str, ...]] = {
+        "downloaded_bytes": ("download", "down", "downloaded", "downloadByte"),
+        "uploaded_bytes": ("upload", "up", "uploaded", "uploadByte"),
+        "used_bytes": ("usage", "used", "usedTraffic", "trafficUsed", "usedByte"),
+        "total_bytes": ("total", "totalTraffic", "limit", "trafficTotal", "totalByte"),
+        "remaining_bytes": ("remaining", "remainingTraffic", "remain", "remained"),
+        "expires_text": ("expire", "expiry", "expires", "expiryTime", "expireDate"),
+        "profile_status": ("status", "state"),
+        "subscription_id": ("email", "subscriptionId", "subId", "clientId", "sId"),
+        "last_seen_text": ("lastSeen", "lastOnline", "onlineAt"),
+        "profile_title": ("profileTitle",),
     }
-    for field, regex_list in patterns.items():
-        for regex in regex_list:
-            match = re.search(regex, raw, re.IGNORECASE)
-            if match:
-                _apply_html_profile_value(parsed, field, match.group(1))
-                break
-    header_like = re.search(r"subscription-userinfo\s*[:=]\s*[\'\"]([^\'\"]+)[\'\"]", raw, re.IGNORECASE)
+
+    for field, aliases in field_aliases.items():
+        value = _search_script_value(raw, *aliases)
+        if value:
+            _apply_html_profile_value(parsed, field, value)
+
+    header_like = re.search(
+        r'(?:subscription-userinfo|subscriptionUserinfo)\s*[:=]\s*([\'\"])([^\'\"]+)\1',
+        raw,
+        re.IGNORECASE,
+    )
     if header_like:
-        for part in header_like.group(1).split(';'):
+        for part in header_like.group(2).split(';'):
             if '=' not in part:
                 continue
             key, value = part.split('=', 1)
@@ -323,6 +405,7 @@ def _parse_subscription_profile_from_html(source: str) -> dict[str, Any]:
     plain_text = "\n".join(plain_parts) if plain_parts else "\n".join(_extract_html_text_lines(raw_html))
 
     for source_map in (
+        _extract_profile_from_lines(extractor.lines),
         _extract_profile_from_cells(extractor.cells),
         _extract_profile_from_blob(plain_text),
         _extract_profile_from_script(raw_html),

@@ -1,17 +1,18 @@
 - `v0.1.50`: backend-парсинг subscription HTML как браузерной страницы (table/text/script fallback) для 3x-ui profile.
+- `v0.1.51`: усилен парсинг subscription HTML/JS, убран захват кусков страницы вместо реальных данных подписки, добавлены unit-тесты parser fallback.
 
 # ServerOrchestration
 
 Web-панель мониторинга и операционного управления Ubuntu/Linux-серверами.
 
-Текущий подготовленный релиз: **v0.1.50**.
+Текущий подготовленный релиз: **v0.1.51**.
 Последний подтверждённый пользователем рабочий релиз: **v0.1.38**.
 
-## Что уже есть в v0.1.50
-- принудительный cache-bust для frontend-ассетов `styles.css` и `app.js` через `?v=0.1.50`;
-- для `/` и `/static/*` выставлены no-store/no-cache headers, чтобы браузер не держал старый фронтенд после релиза;
-- добавлен явный перехват frontend-ошибок и unhandled promise rejection с видимым сообщением на экране;
-- это релиз стабилизации фронтового bootstrap-контура, чтобы кнопки не умирали молча после откатов/горячих фиксов.
+## Что уже есть в v0.1.51
+- всё из v0.1.50 по cache-bust/no-cache и диагностике frontend-bootstrap;
+- усиленный парсинг HTML-страниц подписок 3x-ui без захвата мусорного куска страницы как `profile_title`;
+- дополнительный line/script fallback для случаев, когда subscription profile лежит в JS-объекте страницы;
+- unit-тесты backend-парсера подписок на реальные проблемные сценарии.
 
 ## Архитектурный стек
 - FastAPI backend
@@ -29,8 +30,5 @@ Web-панель мониторинга и операционного управ
 - Материалы по релизам: `docs/releases/<version>/`
 
 ## Ближайший следующий блок
-- **v0.1.50** — cache-bust/no-cache для frontend и видимая диагностика bootstrap-ошибок;
-- дальше: операционные действия по серверам, Ansible inventory/runner, apt/update flows, reboot/maintenance windows, audit trail действий оператора.
-
-### Monitoring hotfix notes
-Current next build after v0.1.50 focuses on persisted 3x-ui subscription details, SSL certificate metadata, and richer probe history output for monitoring.
+- **v0.1.51** — добивка парсинга HTML/JS подписок 3x-ui, чтобы в мониторинге показывались реальные download/upload/limit/expire вместо куска страницы;
+- дальше: добить оставшиеся живые шаблоны 3x-ui по реальному HTML, разгрузить экран диагностики и расширять operational-контур мониторинга/действий по серверам.
