@@ -1,5 +1,6 @@
 import base64
 import html
+from html.parser import HTMLParser
 import ipaddress
 import re
 import shutil
@@ -102,47 +103,248 @@ def _extract_html_text_lines(source: str) -> list[str]:
     return lines
 
 
+
+
+class _SubscriptionHTMLExtractor(HTMLParser):
+    _BLOCK_TAGS = {
+        "p", "div", "section", "article", "header", "footer", "aside",
+        "ul", "ol", "li", "table", "thead", "tbody", "tfoot", "tr",
+        "th", "td", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6",
+        "span", "label", "small", "strong", "b", "em", "i", "a",
+    }
+    _CELL_TAGS = {"th", "td"}
+    _SKIP_TAGS = {"script", "style", "noscript"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._skip_depth = 0
+        self._line_parts: list[str] = []
+        self._cell_parts: list[str] = []
+        self.lines: list[str] = []
+        self.cells: list[str] = []
+
+    def _flush_line(self) -> None:
+        if not self._line_parts:
+            return
+        value = _strip_html_fragment(" ".join(self._line_parts))
+        if value:
+            self.lines.append(value)
+        self._line_parts = []
+
+    def _flush_cell(self) -> None:
+        if not self._cell_parts:
+            return
+        value = _strip_html_fragment(" ".join(self._cell_parts))
+        if value:
+            self.cells.append(value)
+        self._cell_parts = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        lowered = (tag or "").lower()
+        if lowered in self._SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if self._skip_depth:
+            return
+        if lowered in self._CELL_TAGS:
+            self._flush_cell()
+            self._flush_line()
+        elif lowered in self._BLOCK_TAGS:
+            self._flush_line()
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered = (tag or "").lower()
+        if lowered in self._SKIP_TAGS:
+            if self._skip_depth:
+                self._skip_depth -= 1
+            return
+        if self._skip_depth:
+            return
+        if lowered in self._CELL_TAGS:
+            self._flush_cell()
+            self._flush_line()
+        elif lowered in self._BLOCK_TAGS:
+            self._flush_line()
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth or not data:
+            return
+        value = _strip_html_fragment(data)
+        if not value:
+            return
+        self._line_parts.append(value)
+        self._cell_parts.append(value)
+
+    def close(self) -> None:
+        super().close()
+        self._flush_cell()
+        self._flush_line()
+
+
+_HTML_FIELD_PATTERNS: dict[str, tuple[str, ...]] = {
+    "subscription_id": ("id подписки", "subscription id", "client id", "sub id", "email", "id"),
+    "profile_status": ("статус", "status", "state"),
+    "downloaded_bytes": ("загружено", "downloaded", "downloaded bytes", "download", "down"),
+    "uploaded_bytes": ("отправлено", "uploaded", "uploaded bytes", "upload", "up"),
+    "used_bytes": ("использование", "usage", "used", "used traffic", "traffic used"),
+    "total_bytes": ("общий лимит", "total limit", "лимит", "total", "traffic total"),
+    "remaining_bytes": ("остаток", "remaining", "remain", "remaining traffic"),
+    "last_seen_text": ("был(а) в сети", "был в сети", "last online", "last seen", "online at", "last_online"),
+    "expires_text": ("срок действия", "expiry", "expires", "expire", "expired at"),
+    "profile_title": ("информация о подписке", "subscription info", "subscription information", "title"),
+}
+
+
+def _match_html_field(label: str | None) -> str | None:
+    normalized = _normalize_html_label(label)
+    if not normalized:
+        return None
+    alias = _HTML_LABEL_ALIASES.get(normalized)
+    if alias:
+        return alias
+    for field, names in _HTML_FIELD_PATTERNS.items():
+        for name in names:
+            name_norm = _normalize_html_label(name)
+            if normalized == name_norm or normalized.endswith(name_norm) or normalized.startswith(name_norm + " "):
+                return field
+    return None
+
+
+def _apply_html_profile_value(parsed: dict[str, Any], field: str, value: str | None) -> None:
+    cleaned = _strip_html_fragment(value)
+    if cleaned:
+        parsed[field] = cleaned
+
+
+def _extract_profile_from_cells(cells: list[str]) -> dict[str, Any]:
+    parsed: dict[str, Any] = {}
+    cleaned = [_strip_html_fragment(cell) for cell in cells if _strip_html_fragment(cell)]
+    for idx in range(len(cleaned) - 1):
+        field = _match_html_field(cleaned[idx])
+        if field:
+            _apply_html_profile_value(parsed, field, cleaned[idx + 1])
+    return parsed
+
+
+def _extract_profile_from_blob(text: str) -> dict[str, Any]:
+    parsed: dict[str, Any] = {}
+    normalized_blob = _normalize_html_label(text)
+    if not normalized_blob:
+        return parsed
+    all_aliases: list[str] = []
+    for names in _HTML_FIELD_PATTERNS.values():
+        all_aliases.extend(_normalize_html_label(name) for name in names)
+    boundary = "|".join(sorted({re.escape(alias) for alias in all_aliases if alias}, key=len, reverse=True))
+    if not boundary:
+        return parsed
+    for field, names in _HTML_FIELD_PATTERNS.items():
+        pattern = "|".join(sorted({re.escape(_normalize_html_label(name)) for name in names}, key=len, reverse=True))
+        if not pattern:
+            continue
+        match = re.search(
+            rf"(?:^|[\s|•·\[\](),;])(?:{pattern})\s*[:：-]?\s*(.+?)(?=(?:^|[\s|•·\[\](),;])(?:{boundary})\s*[:：-]?|$)",
+            normalized_blob,
+            re.IGNORECASE,
+        )
+        if match:
+            _apply_html_profile_value(parsed, field, match.group(1))
+    return parsed
+
+
+def _extract_profile_from_script(html_source: str) -> dict[str, Any]:
+    parsed: dict[str, Any] = {}
+    raw = html_source or ""
+    patterns = {
+        "downloaded_bytes": [r'"(?:download|down|downloaded)"\s*[:=]\s*"?([^",;}{]+)'],
+        "uploaded_bytes": [r'"(?:upload|up|uploaded)"\s*[:=]\s*"?([^",;}{]+)'],
+        "used_bytes": [r'"(?:usage|used|usedTraffic|trafficUsed)"\s*[:=]\s*"?([^",;}{]+)'],
+        "total_bytes": [r'"(?:total|totalTraffic|limit|trafficTotal)"\s*[:=]\s*"?([^",;}{]+)'],
+        "remaining_bytes": [r'"(?:remaining|remainingTraffic|remain)"\s*[:=]\s*"?([^",;}{]+)'],
+        "expires_text": [r'"(?:expire|expiry|expires|expiryTime|expireDate)"\s*[:=]\s*"?([^",;}{]+)'],
+        "profile_status": [r'"(?:status|state)"\s*[:=]\s*"?([^",;}{]+)'],
+        "subscription_id": [r'"(?:email|subscriptionId|subId|clientId|id)"\s*[:=]\s*"?([^",;}{]+)'],
+        "last_seen_text": [r'"(?:lastSeen|lastOnline|onlineAt)"\s*[:=]\s*"?([^",;}{]+)'],
+        "profile_title": [r'"(?:profileTitle|title)"\s*[:=]\s*"?([^",;}{]+)'],
+    }
+    for field, regex_list in patterns.items():
+        for regex in regex_list:
+            match = re.search(regex, raw, re.IGNORECASE)
+            if match:
+                _apply_html_profile_value(parsed, field, match.group(1))
+                break
+    header_like = re.search(r"subscription-userinfo\s*[:=]\s*[\'\"]([^\'\"]+)[\'\"]", raw, re.IGNORECASE)
+    if header_like:
+        for part in header_like.group(1).split(';'):
+            if '=' not in part:
+                continue
+            key, value = part.split('=', 1)
+            key = key.strip().lower()
+            value = value.strip()
+            if key == 'upload':
+                _apply_html_profile_value(parsed, 'uploaded_bytes', value)
+            elif key == 'download':
+                _apply_html_profile_value(parsed, 'downloaded_bytes', value)
+            elif key == 'total':
+                _apply_html_profile_value(parsed, 'total_bytes', value)
+            elif key == 'expire':
+                _apply_html_profile_value(parsed, 'expires_text', value)
+    return parsed
+
+
 def _parse_subscription_profile_from_html(source: str) -> dict[str, Any]:
     parsed: dict[str, Any] = {}
+    raw_html = source or ""
+    if not raw_html:
+        return parsed
 
     row_pattern = re.compile(r'(?is)<tr[^>]*>\s*(.*?)\s*</tr>')
     cell_pattern = re.compile(r'(?is)<t[dh][^>]*>\s*(.*?)\s*</t[dh]>')
-    for row_match in row_pattern.finditer(source or ''):
+    for row_match in row_pattern.finditer(raw_html):
         row_html = row_match.group(1)
         cells = [_strip_html_fragment(cell) for cell in cell_pattern.findall(row_html)]
         if len(cells) < 2:
             continue
-        alias = _HTML_LABEL_ALIASES.get(_normalize_html_label(cells[0]))
-        if alias and cells[1]:
-            parsed[alias] = cells[1]
+        field = _match_html_field(cells[0])
+        if field:
+            _apply_html_profile_value(parsed, field, cells[1])
 
-    if not parsed:
-        lines = _extract_html_text_lines(source)
-        if not lines:
-            return {}
-        for index, line in enumerate(lines[:-1]):
-            alias = _HTML_LABEL_ALIASES.get(_normalize_html_label(line))
-            if not alias:
-                continue
-            value = lines[index + 1].strip()
-            if not value:
-                continue
-            parsed[alias] = value
+    extractor = _SubscriptionHTMLExtractor()
+    try:
+        extractor.feed(raw_html)
+        extractor.close()
+    except Exception:
+        pass
+
+    plain_parts: list[str] = []
+    if extractor.lines:
+        plain_parts.extend(extractor.lines)
+    if extractor.cells:
+        plain_parts.extend(extractor.cells)
+    plain_text = "\n".join(plain_parts) if plain_parts else "\n".join(_extract_html_text_lines(raw_html))
+
+    for source_map in (
+        _extract_profile_from_cells(extractor.cells),
+        _extract_profile_from_blob(plain_text),
+        _extract_profile_from_script(raw_html),
+    ):
+        for key, value in source_map.items():
+            if key not in parsed and value:
+                parsed[key] = value
 
     if not parsed:
         return {}
 
     for key in ('downloaded_bytes', 'uploaded_bytes', 'used_bytes', 'total_bytes', 'remaining_bytes'):
         if key in parsed:
-            parsed[f'{key}_text'] = parsed[key]
-            size_value = _parse_data_size(parsed[key])
+            parsed[f'{key}_text'] = str(parsed[key])
+            size_value = _parse_data_size(str(parsed[key]))
             if size_value is not None:
                 parsed[key] = size_value
 
     expires_text = str(parsed.get('expires_text') or '').strip()
     if expires_text:
         lowered = expires_text.casefold()
-        if any(token in lowered for token in ('бесср', 'unlimited', 'never')):
+        if any(token in lowered for token in ('бесср', 'unlimited', 'never', '∞')):
             parsed['expires_unlimited'] = True
         else:
             parsed['expires_unlimited'] = False
@@ -157,6 +359,11 @@ def _parse_subscription_profile_from_html(source: str) -> dict[str, Any]:
         remaining = parsed.get('remaining_bytes')
         if isinstance(total, int) and isinstance(remaining, int):
             parsed['used_bytes'] = max(total - remaining, 0)
+    if 'total_bytes' in parsed and 'used_bytes' in parsed and 'remaining_bytes' not in parsed:
+        total = parsed.get('total_bytes')
+        used = parsed.get('used_bytes')
+        if isinstance(total, int) and isinstance(used, int):
+            parsed['remaining_bytes'] = max(total - used, 0)
 
     return parsed
 

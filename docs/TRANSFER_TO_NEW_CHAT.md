@@ -1,58 +1,81 @@
 # ServerOrchestration — перенос в новый чат
 
 ## Что это
-ServerOrchestration — панель управления и мониторинга серверов/контуров: SSH, HTTP, SSL, 3x-ui console/subscription, группировка серверов, журнал запусков проверок и работа через Portainer/GHCR.
+ServerOrchestration — панель оркестрации и мониторинга серверов: SSH, HTTP/HTTPS, SSL, 3x-ui console/subscription, история прогонов, группировка серверов и дальнейший operational/Ansible-контур.
 
-## Текущий кодовый пакет
-- Версия архива: **v0.1.38**
-- Версия в `VERSION`: **0.1.36**
-- Версия в backend (`APP_VERSION`): **0.1.36**
-- Базовый стек: **FastAPI + PostgreSQL + Docker Compose + Vanilla JS**
+## Текущий пакет
+- Версия архива: **v0.1.50**
+- Версия в `VERSION`: **0.1.50**
+- Версия backend (`APP_VERSION`): **0.1.50**
+- Стек: **FastAPI + PostgreSQL + Docker Compose + Vanilla JS/AJAX**
 
-## Что сделано в этом пакете
-1. Синхронизирована версия проекта до `0.1.38`.
-2. Добавлена полноценная инструкция `docs/SSH_MIGRATION.md` по переходу репозитория и рабочих машин на SSH.
-3. Для статусов доступности проброшен `summary_json` из backend в UI-слой.
-4. В интерфейсе статусов/карточек серверов добавлены более информативные детали по контурам:
-   - HTTP status code для web/console/subscription;
-   - текст ошибки, если 3x-ui subscription не отдала валидный payload;
-   - краткая сводка по SSL (`self-signed`, дни до истечения, ошибка проверки).
-5. Hover по строкам таблицы сделан мягче: фон теперь подсвечивает ячейки, а не создаёт ощущение «сплошной заливки поверх всего».
-6. Для широкой таблицы статусов добавлены более аккуратные nowrap/soft-wrap правила, чтобы IP/SSH не ломались, а длинные URL и ошибки переносились мягче.
-7. Исправлена SSL-проверка на Python 3.12+: убран недоступный `ssl.match_hostname`, добавлено ручное сопоставление hostname/IP через SAN/CN с поддержкой self-signed сертификатов.
-8. Исправлен ручной запуск SSL/3x-ui: backend принимает POST даже без тела, frontend отправляет дефолтные timeout-параметры, а API-ошибки выводятся нормальным текстом вместо `[object Object]`.
+## Что уже сделано к этому шагу
+1. Кнопки ручных проверок возвращены в стабильный AJAX/static-контур без хрупкой frontend-магии.
+2. Разведены сценарии:
+   - SSH endpoint;
+   - Web URL;
+   - 3x-ui console URL;
+   - 3x-ui subscription URL;
+   - SSL по subscription/целевому порту, не по SSH-порту.
+3. Починена SSL-проверка для self-signed и обычных сертификатов.
+4. В мониторинге появились отдельные статусы по HTTP / 3x-ui console / 3x-ui subscription / SSL.
+5. Таблица проверок уже приведена в более читаемый вид через плашки и компактные детали.
+6. Страница подписки 3x-ui теперь разбирается как HTML-страница браузера, а не только как «голый» payload:
+   - разбор табличных полей профиля подписки;
+   - fallback по плоскому тексту страницы;
+   - fallback по embedded/script-данным.
 
-## Важные файлы
-- `app/backend/src/main.py` — backend FastAPI и API версии
-- `app/backend/src/db.py` — SQL-запросы серверов и статусов
-- `app/backend/src/static/app.js` — frontend логика
-- `app/backend/src/static/styles.css` — стили
-- `deploy/docker-compose.portainer.yml` — Portainer stack
-- `deploy/stack.env.example` — пример env
-- `docs/SSH_MIGRATION.md` — новая инструкция по SSH
-- `docs/GHCR_AND_PORTAINER.md` — GHCR/Portainer workflow
+## Что входит в v0.1.50
+- Усилен backend-парсинг subscription HTML.
+- Добавлен extractor на `HTMLParser` для профиля подписки.
+- Нормализованы поля профиля:
+  - `subscription_id`
+  - `profile_status`
+  - `downloaded_bytes`
+  - `uploaded_bytes`
+  - `used_bytes`
+  - `total_bytes`
+  - `remaining_bytes`
+  - `last_seen_text`
+  - `expires_text`
+  - `expires_unlimited`
+- Если страница не отдаёт `used/remaining` напрямую, backend пытается вычислить их из `upload/download/total`.
 
 ## Что проверить после выкладки
-1. Открывается список серверов и таблица статусов без JS-ошибок.
-2. Для проблемного 3x-ui subscription в UI видно не просто зелёный/красный индикатор, а полезную детализацию ошибки/HTTP-кода.
-3. SSL-плашка показывает либо валидность/остаток дней, либо короткую ошибку.
-4. Hover по строкам таблицы не выглядит как тяжёлая сплошная заливка.
-5. Версия в интерфейсе/endpoint соответствует `0.1.38`.
+1. Кнопки `Проверить SSH`, `Проверить HTTP/HTTPS`, `Проверить 3x-ui`, `Проверить SSL`, `Запустить все проверки` нажимаются без JS-сбоев.
+2. Для сервера с 3x-ui в деталях subscription появляются:
+   - использование трафика;
+   - общий лимит;
+   - остаток;
+   - срок действия / бессрочность;
+   - last seen / статус.
+3. SSL-проверка отдельно продолжает работать и не ломается на self-signed сертификате.
+4. История прогонов сохраняет результаты без регрессии.
+5. Версия в UI и `/health` соответствует `0.1.50`.
 
-## Что осталось отдельным хвостом
-- Если нужно чинить конкретную форму авторизации с кнопкой «Войти», в новый чат лучше приложить именно тот актуальный frontend-слепок, где эта форма уже есть: в текущем архиве она не выделяется как отдельный auth-модуль, поэтому баг нужно сверять по фактическому состоянию репозитория/ветки.
+## Важные файлы
+- `app/backend/src/main.py` — API, scheduler, ручные проверки
+- `app/backend/src/probes.py` — логика probe-контуров, SSL, 3x-ui, парсинг subscription
+- `app/backend/src/db.py` — хранение серверов, статусов и summary/details
+- `app/backend/src/static/app.js` — стабильный AJAX frontend
+- `app/backend/src/static/styles.css` — таблицы/плашки/hover
+- `deploy/docker-compose.portainer.yml` — stack для Portainer
+- `deploy/stack.env.example` — env-пример
+- `docs/releases/0.1.50/RELEASE_NOTES.md` — заметки по текущему релизу
 
-## Как стартовать разговор в новом чате
-Вставить примерно так:
+## Текущий приоритет дальше
+Главный курс — **меньше латания косметики, больше функционала**.
 
-> Продолжаем проект ServerOrchestration. Базовый архив: v0.1.36.
-> Смотри `docs/TRANSFER_TO_NEW_CHAT.md`, `docs/SSH_MIGRATION.md`, `docs/GHCR_AND_PORTAINER.md`.
-> Текущий фокус: проверить новый вывод статусов доступности, SSH workflow и дальше двигать функционал мониторинга/операционного контура.
+Ближайший рабочий план:
+1. Добить стабильный вывод subscription profile на реальном endpoint, если конкретный сервер отдаёт данные не в HTML/inline-script, а отдельным XHR.
+2. Перейти к функциональным релизам monitoring/operational-контура.
+3. Не забывать про остальной функционал **Ansible** — мониторинг не должен съесть весь проект.
+4. Дальше разносить operational-функции по нормальным разделам/вкладкам левого меню.
 
-- Важно: не забывать про остальной функционал **Ansible**. Текущий hotfix закрывает мониторинг 3x-ui/SSL, но следующий функциональный цикл нужно держать с учётом уже существующего ansible-контура, а не уходить только в UI-полировку.
+## Как стартовать новый чат
+Вставить так:
 
-- v0.1.49 next: stabilize persisted 3x-ui details and surface subscription traffic/expiry plus SSL cert details in monitoring/history.
-
-
-### Последний шаг
-- v0.1.49: cache-bust/no-cache для frontend и видимая диагностика bootstrap-ошибок.
+> Продолжаем проект ServerOrchestration.
+> Базовый архив: v0.1.50.
+> Смотри `docs/TRANSFER_TO_NEW_CHAT.md` и `docs/releases/0.1.50/RELEASE_NOTES.md`.
+> Текущий фокус: добить чтение профиля подписки 3x-ui с реального endpoint браузерного типа и затем вернуться к функциональному monitoring/Ansible-контуру.
