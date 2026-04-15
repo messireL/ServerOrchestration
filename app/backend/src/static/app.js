@@ -169,14 +169,17 @@ function statusHtml(flag) {
 }
 
 function probeBadgeHtml(label, flag, options = {}) {
-  const { disabled = false, detail = '' } = options;
+  const { disabled = false, detail = '', hoverOnly = false } = options;
   if (disabled) {
-    return `<span class="status-pill disabled">${safe(label)}: off</span>`;
+    const text = `${label}: off`;
+    return `<span class="status-pill disabled" title="${safe(text)}">${safe(text)}</span>`;
   }
   const cls = flag === true ? 'ok' : flag === false ? 'fail' : 'unknown';
   const value = flag === true ? 'OK' : flag === false ? 'FAIL' : 'unknown';
-  const suffix = detail ? ` · ${safe(detail)}` : '';
-  return `<span class="status-pill ${cls}">${safe(label)}: ${value}${suffix}</span>`;
+  const baseText = `${label}: ${value}`;
+  const fullText = detail ? `${baseText} · ${detail}` : baseText;
+  const visibleText = hoverOnly ? baseText : fullText;
+  return `<span class="status-pill ${cls}" title="${safe(fullText)}">${safe(visibleText)}</span>`;
 }
 
 function latencyBadgeHtml(label, value) {
@@ -694,10 +697,10 @@ function renderStatuses(items) {
     const groupText = (item.groups || []).map((g) => safe(g)).join(', ') || 'Без группы';
     const contourDetails = buildContourDetails(item);
     const probePills = [
-      probeBadgeHtml('HTTP', item.http_ok, { disabled: !item.has_http_monitoring, detail: contourDetails.http || (item.http_status_code ? `HTTP ${item.http_status_code}` : '') }),
-      probeBadgeHtml('3x-ui console', item.console_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.console || (item.console_3xui_http_status ? `HTTP ${item.console_3xui_http_status}` : '') }),
-      probeBadgeHtml('3x-ui sub', item.subscription_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.sub || (item.subscription_3xui_http_status ? `HTTP ${item.subscription_3xui_http_status}` : '') }),
-      probeBadgeHtml('SSL', item.ssl_ok, { disabled: !item.has_ssl_monitoring, detail: contourDetails.ssl || '' })
+      probeBadgeHtml('HTTP', item.http_ok, { disabled: !item.has_http_monitoring, detail: contourDetails.http || (item.http_status_code ? `HTTP ${item.http_status_code}` : ''), hoverOnly: true }),
+      probeBadgeHtml('3x-ui console', item.console_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.console || (item.console_3xui_http_status ? `HTTP ${item.console_3xui_http_status}` : ''), hoverOnly: true }),
+      probeBadgeHtml('3x-ui sub', item.subscription_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.sub || (item.subscription_3xui_http_status ? `HTTP ${item.subscription_3xui_http_status}` : ''), hoverOnly: true }),
+      probeBadgeHtml('SSL', item.ssl_ok, { disabled: !item.has_ssl_monitoring, detail: contourDetails.ssl || '', hoverOnly: true })
     ].join('');
 
     const latencyPills = [

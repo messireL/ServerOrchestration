@@ -61,7 +61,7 @@ from src.probes import get_ping_diagnostics, probe_ssl_certificate, run_3xui_sub
 
 APP_NAME = os.getenv("APP_NAME", "server-orchestration")
 APP_DISPLAY_NAME = os.getenv("APP_DISPLAY_NAME", "Система мониторинга")
-APP_VERSION = os.getenv("APP_VERSION", "0.1.40")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.41")
 APP_TZ = os.getenv("APP_TZ", "Europe/Moscow")
 APP_PUBLIC_BASE_URL = os.getenv("APP_PUBLIC_BASE_URL", "http://192.168.5.22:18080")
 SCHEDULER_POLL_SECONDS = int(os.getenv("MONITOR_SCHEDULER_POLL_SECONDS", "5"))
@@ -521,7 +521,12 @@ def _join_probe_errors(*parts: object) -> str | None:
 
 def _run_xui_probe_for_server(server: Dict[str, Any], timeout_seconds: int, source: str = "scheduler") -> Dict[str, Any]:
     server_id = server["id"]
-    if not server.get("has_3xui_monitoring"):
+    xui_enabled = bool(
+        server.get("has_3xui")
+        or server.get("console_3xui_url")
+        or server.get("subscription_3xui_url")
+    )
+    if not xui_enabled:
         result = {"ok": False, "error": "3x-ui monitoring disabled", "skipped": True}
         update_3xui_status(
             server_id=server_id,
