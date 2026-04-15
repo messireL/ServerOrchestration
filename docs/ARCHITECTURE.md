@@ -33,3 +33,9 @@
 - hotfix v0.1.27 синхронизирует frontend form-fields monitor settings с backend scheduler settings и добавляет безопасную запись значений в форму.
 
 - infra v0.1.29 переводит Portainer stack backend image на стабильный operational tag `stable`, сохраняя version tag в registry только для истории/rollback.
+
+
+## Актуальное уточнение v0.1.52
+- backend может хранить технические детали парсинга subscription page для диагностики, но frontend-слой должен отдавать оператору только очищенное и локализованное представление;
+- разделы мониторинга и карточки серверов должны отделять служебную диагностику от итогового human-readable summary по подписке 3x-ui;
+- release documentation (`README`, `TRANSFER_TO_NEW_CHAT`, `docs/releases/<version>/`) считается частью поставки и обновляется в каждом релизе.

@@ -117,7 +117,7 @@ function statusPillHtml(label, flag, disabledLabel = null) {
     return `<span class="status-pill disabled">${safe(label)}: ${safe(disabledLabel)}</span>`;
   }
   const cls = flag === true ? 'ok' : flag === false ? 'fail' : 'unknown';
-  const value = flag === true ? 'OK' : flag === false ? 'FAIL' : 'unknown';
+  const value = flag === true ? 'OK' : flag === false ? 'СБОЙ' : '—';
   return `<span class="status-pill ${cls}">${safe(label)}: ${value}</span>`;
 }
 
@@ -199,18 +199,18 @@ function formatTs(value) {
 
 function statusHtml(flag) {
   if (flag === true) return '<span class="status-dot ok">OK</span>';
-  if (flag === false) return '<span class="status-dot fail">FAIL</span>';
-  return '<span class="status-dot unknown">unknown</span>';
+  if (flag === false) return '<span class="status-dot fail">СБОЙ</span>';
+  return '<span class="status-dot unknown">—</span>';
 }
 
 function probeBadgeHtml(label, flag, options = {}) {
   const { disabled = false, detail = '', hoverOnly = false } = options;
   if (disabled) {
-    const text = `${label}: off`;
+    const text = `${label}: выкл`;
     return `<span class="status-pill disabled" title="${safe(text)}">${safe(text)}</span>`;
   }
   const cls = flag === true ? 'ok' : flag === false ? 'fail' : 'unknown';
-  const value = flag === true ? 'OK' : flag === false ? 'FAIL' : 'unknown';
+  const value = flag === true ? 'OK' : flag === false ? 'СБОЙ' : '—';
   const baseText = `${label}: ${value}`;
   const fullText = detail ? `${baseText} · ${detail}` : baseText;
   const visibleText = hoverOnly ? baseText : fullText;
@@ -254,6 +254,81 @@ function formatBytesCompact(value) {
   return idx === 0 ? `${Math.round(current)} ${units[idx]}` : `${current.toFixed(current >= 100 ? 0 : current >= 10 ? 1 : 2)} ${units[idx]}`;
 }
 
+function translateSubscriptionStatus(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const normalized = text.toLowerCase();
+  const map = {
+    active: 'активна',
+    enabled: 'активна',
+    online: 'в сети',
+    inactive: 'неактивна',
+    disabled: 'отключена',
+    expired: 'истекла',
+    unlimited: 'бессрочно',
+    valid: 'действует',
+    invalid: 'недействительна',
+  };
+  return map[normalized] || text;
+}
+
+function isMeaningfulSubscriptionValue(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  const lowered = text.toLowerCase();
+  if (lowered.includes('html embedded')) return false;
+  if (lowered.startsWith('http ok')) return false;
+  if (lowered.includes('<html') || lowered.includes('<body') || lowered.includes('<script') || lowered.includes('</')) return false;
+  return true;
+}
+
+function buildSubscriptionDetailsText(xuiSub) {
+  if (!xuiSub || !xuiSub.ok) return '';
+  const parts = [];
+
+  const usedBytes = Number(xuiSub.used_bytes);
+  const totalBytes = Number(xuiSub.total_bytes);
+  if (Number.isFinite(usedBytes) || Number.isFinite(totalBytes)) {
+    const usedLabel = Number.isFinite(usedBytes) ? formatBytesCompact(usedBytes) : '0 B';
+    const totalLabel = Number.isFinite(totalBytes) && totalBytes > 0 ? formatBytesCompact(totalBytes) : '∞';
+    parts.push(`Трафик: ${usedLabel} из ${totalLabel}`);
+  }
+
+  const remainingBytes = Number(xuiSub.remaining_bytes);
+  if (Number.isFinite(remainingBytes) && remainingBytes >= 0) {
+    parts.push(`Остаток: ${formatBytesCompact(remainingBytes)}`);
+  }
+
+  if (Number.isFinite(Number(xuiSub.days_remaining))) {
+    const days = Number(xuiSub.days_remaining);
+    parts.push(days >= 0 ? `Осталось: ${days} д.` : 'Срок: истёк');
+  } else if (xuiSub.expires_at) {
+    parts.push(`Действует до: ${String(xuiSub.expires_at).slice(0, 10)}`);
+  } else if (xuiSub.expires_unlimited) {
+    parts.push('Срок: бессрочно');
+  } else if (isMeaningfulSubscriptionValue(xuiSub.expires_text)) {
+    parts.push(`Срок: ${String(xuiSub.expires_text).trim()}`);
+  }
+
+  if (isMeaningfulSubscriptionValue(xuiSub.profile_status)) {
+    parts.push(`Статус: ${translateSubscriptionStatus(xuiSub.profile_status)}`);
+  }
+
+  if (isMeaningfulSubscriptionValue(xuiSub.last_seen_text)) {
+    parts.push(`Был в сети: ${String(xuiSub.last_seen_text).trim()}`);
+  }
+
+  if (isMeaningfulSubscriptionValue(xuiSub.subscription_id)) {
+    parts.push(`ID: ${String(xuiSub.subscription_id).trim()}`);
+  }
+
+  if (!parts.length && xuiSub.status_code) {
+    parts.push(`Ответ страницы: HTTP ${xuiSub.status_code}`);
+  }
+
+  return parts.join(' · ');
+}
+
 function compactProbeDetail(value, max = 36) {
   const text = String(value ?? '').trim();
   if (!text) return '';
@@ -289,28 +364,7 @@ function buildContourDetails(item) {
   else if (xuiConsole && (xuiConsole.error || summary.xui_console_error)) result.console = compactProbeDetail(xuiConsole.error || summary.xui_console_error, 24);
 
   if (xuiSub && xuiSub.ok) {
-    const parts = [];
-    if (xuiSub.status_code) parts.push(`HTTP ${xuiSub.status_code}`);
-    if (Number.isFinite(Number(xuiSub.entries_count)) && Number(xuiSub.entries_count) > 0) parts.push(`${Number(xuiSub.entries_count)} cfg`);
-    else if (Number.isFinite(Number(xuiSub.entries)) && Number(xuiSub.entries) > 0) parts.push(`${Number(xuiSub.entries)} cfg`);
-    const usedBytes = Number(xuiSub.used_bytes);
-    const totalBytes = Number(xuiSub.total_bytes);
-    if (Number.isFinite(usedBytes) || Number.isFinite(totalBytes)) {
-      const usedLabel = Number.isFinite(usedBytes) ? formatBytesCompact(usedBytes) : '0 B';
-      const totalLabel = Number.isFinite(totalBytes) && totalBytes > 0 ? formatBytesCompact(totalBytes) : '∞';
-      parts.push(`${usedLabel}/${totalLabel}`);
-    }
-    const remainingBytes = Number(xuiSub.remaining_bytes);
-    if (Number.isFinite(remainingBytes) && remainingBytes >= 0) parts.push(`rem ${formatBytesCompact(remainingBytes)}`);
-    if (Number.isFinite(Number(xuiSub.days_remaining))) parts.push(`exp ${Number(xuiSub.days_remaining)}d`);
-    else if (xuiSub.expires_at) parts.push(`exp ${String(xuiSub.expires_at).slice(0, 10)}`);
-    else if (xuiSub.expires_unlimited) parts.push('exp ∞');
-    else if (xuiSub.expires_text) parts.push(`exp ${String(xuiSub.expires_text)}`);
-    if (xuiSub.profile_status) parts.push(String(xuiSub.profile_status));
-    if (xuiSub.encoding) parts.push(String(xuiSub.encoding));
-    if (Array.isArray(xuiSub.entry_types) && xuiSub.entry_types.length) parts.push(xuiSub.entry_types.join(', '));
-    if (xuiSub.profile_title) parts.push(String(xuiSub.profile_title));
-    result.sub = parts.join(' · ');
+    result.sub = buildSubscriptionDetailsText(xuiSub);
   } else if (xuiSub && (xuiSub.payload_error || xuiSub.error || summary.xui_subscription_error)) {
     result.sub = compactProbeDetail(xuiSub.payload_error || xuiSub.error || summary.xui_subscription_error, 28);
   }
@@ -375,12 +429,12 @@ function renderSidebarOverview(summary) {
 function renderChecksQuickStats(summary) {
   const quick = $('checksQuickStats');
   if (!quick || !summary) return;
-  const schedulerState = summary.scheduler_enabled ? 'on' : 'off';
+  const schedulerState = summary.scheduler_enabled ? 'вкл' : 'выкл';
   const items = [
-    ['Ping OK / fail', `${summary.ping_ok_total} / ${summary.ping_fail_total}`],
-    ['SSH OK / fail', `${summary.ssh_ok_total} / ${summary.ssh_fail_total}`],
-    ['HTTP OK / fail', `${summary.http_ok_total} / ${summary.http_fail_total}`],
-    ['Scheduler', schedulerState],
+    ['Ping: OK / сбой', `${summary.ping_ok_total} / ${summary.ping_fail_total}`],
+    ['SSH: OK / сбой', `${summary.ssh_ok_total} / ${summary.ssh_fail_total}`],
+    ['HTTP: OK / сбой', `${summary.http_ok_total} / ${summary.http_fail_total}`],
+    ['Планировщик', schedulerState],
     ['Активные alerts', summary.active_alerts_total],
   ];
   quick.innerHTML = items.map(([label, value]) => `
@@ -409,7 +463,7 @@ function renderMonitorSettings(settings) {
   const stats = $('schedulerStats');
   const badge = $('schedulerStateBadge');
   if (badge) {
-    badge.textContent = `scheduler: ${settings?.scheduler_enabled ? 'on' : 'off'}`;
+    badge.textContent = `Планировщик: ${settings?.scheduler_enabled ? 'вкл' : 'выкл'}`;
     badge.className = settings?.scheduler_enabled ? 'pill pill-success' : 'pill pill-warning';
   }
   if (!form || !settings) return;
@@ -457,8 +511,8 @@ function renderProbeHistory(items) {
     const resultHtml = item.ok === true
       ? '<span class="pill pill-success">OK</span>'
       : item.ok === false
-        ? '<span class="pill pill-danger">FAIL</span>'
-        : '<span class="pill pill-neutral">unknown</span>';
+        ? '<span class="pill pill-danger">СБОЙ</span>'
+        : '<span class="pill pill-neutral">—</span>';
     const details = [];
     if (item.details) details.push(String(item.details));
     if (item.latency_ms !== null && item.latency_ms !== undefined) details.push(`${item.latency_ms} ms`);
@@ -489,10 +543,10 @@ function renderAlertSettings(settings) {
   setFormFieldValue(form, 'reminder_interval_seconds', settings.reminder_interval_seconds ?? 3600);
   if (stats) {
     const items = [
-      ['Telegram', settings.telegram_configured ? `configured → ${settings.telegram_target || 'chat'}` : 'not configured'],
-      ['Email', settings.email_configured ? `configured → ${settings.email_target || 'mailbox'}` : 'not configured'],
-      ['Stale threshold', `${settings.stale_after_seconds}s`],
-      ['Reminder interval', `${settings.reminder_interval_seconds}s`],
+      ['Telegram', settings.telegram_configured ? `настроен → ${settings.telegram_target || 'chat'}` : 'не настроен'],
+      ['Email', settings.email_configured ? `настроен → ${settings.email_target || 'mailbox'}` : 'не настроен'],
+      ['Порог stale', `${settings.stale_after_seconds}s`],
+      ['Интервал напоминаний', `${settings.reminder_interval_seconds}s`],
     ];
     stats.innerHTML = items.map(([label, value]) => `
       <div class="micro-stat">
@@ -665,14 +719,14 @@ function renderServersTable(servers, statuses) {
           <div class="status-pill-row">
             ${statusPillHtml('Ping', st.ping_ok)}
             ${statusPillHtml('SSH', st.ssh_ok)}
-            ${statusPillHtml('HTTP', item.has_http_monitoring ? st.http_ok : null, item.has_http_monitoring ? null : 'off')}
-            ${statusPillHtml('3x-ui console', item.has_3xui ? st.console_3xui_ok : null, item.has_3xui ? null : 'off')}
-            ${statusPillHtml('3x-ui sub', item.has_3xui ? st.subscription_3xui_ok : null, item.has_3xui ? null : 'off')}
+            ${statusPillHtml('HTTP', item.has_http_monitoring ? st.http_ok : null, item.has_http_monitoring ? null : 'выкл')}
+            ${statusPillHtml('Консоль 3x-ui', item.has_3xui ? st.console_3xui_ok : null, item.has_3xui ? null : 'выкл')}
+            ${statusPillHtml('Подписка 3x-ui', item.has_3xui ? st.subscription_3xui_ok : null, item.has_3xui ? null : 'выкл')}
           </div>
-          <div class="muted small-text">web: ${webText}</div>
-          <div class="muted small-text">console: ${item.console_3xui_url ? safe(item.console_3xui_url) : '—'}${contourDetails.console ? ` · ${safe(contourDetails.console)}` : ''}</div>
-          <div class="muted small-text">subscription: ${item.subscription_3xui_url ? safe(item.subscription_3xui_url) : '—'}${contourDetails.sub ? ` · ${safe(contourDetails.sub)}` : ''}</div>
-          <div class="muted small-text">ssl: ${contourDetails.ssl ? safe(contourDetails.ssl) : '—'}</div>
+          <div class="muted small-text">Веб: ${webText}</div>
+          <div class="muted small-text">Консоль 3x-ui: ${item.console_3xui_url ? safe(item.console_3xui_url) : '—'}${contourDetails.console ? ` · ${safe(contourDetails.console)}` : ''}</div>
+          <div class="muted small-text">Подписка 3x-ui: ${item.subscription_3xui_url ? safe(item.subscription_3xui_url) : '—'}${contourDetails.sub ? ` · ${safe(contourDetails.sub)}` : ''}</div>
+          <div class="muted small-text">SSL: ${contourDetails.ssl ? safe(contourDetails.ssl) : '—'}</div>
         </td>
         <td>
           <div>${formatTs(st.last_check_at)}</div>
@@ -750,8 +804,8 @@ function renderStatuses(items) {
     const contourDetails = buildContourDetails(item);
     const probePills = [
       probeBadgeHtml('HTTP', item.http_ok, { disabled: !item.has_http_monitoring, detail: contourDetails.http || (item.http_status_code ? `HTTP ${item.http_status_code}` : ''), hoverOnly: true }),
-      probeBadgeHtml('3x-ui console', item.console_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.console || (item.console_3xui_http_status ? `HTTP ${item.console_3xui_http_status}` : ''), hoverOnly: true }),
-      probeBadgeHtml('3x-ui sub', item.subscription_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.sub || (item.subscription_3xui_http_status ? `HTTP ${item.subscription_3xui_http_status}` : ''), hoverOnly: true }),
+      probeBadgeHtml('Консоль 3x-ui', item.console_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.console || (item.console_3xui_http_status ? `HTTP ${item.console_3xui_http_status}` : ''), hoverOnly: true }),
+      probeBadgeHtml('Подписка 3x-ui', item.subscription_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.sub || (item.subscription_3xui_http_status ? `HTTP ${item.subscription_3xui_http_status}` : ''), hoverOnly: true }),
       probeBadgeHtml('SSL', item.ssl_ok, { disabled: !item.has_ssl_monitoring, detail: contourDetails.ssl || '', hoverOnly: true })
     ].join('');
 
@@ -759,8 +813,8 @@ function renderStatuses(items) {
       latencyBadgeHtml('ping', item.ping_latency_ms),
       latencyBadgeHtml('ssh', item.ssh_latency_ms),
       latencyBadgeHtml('http', item.http_response_ms),
-      latencyBadgeHtml('3x-ui console', item.console_3xui_response_ms),
-      latencyBadgeHtml('3x-ui sub', item.subscription_3xui_response_ms)
+      latencyBadgeHtml('Консоль 3x-ui', item.console_3xui_response_ms),
+      latencyBadgeHtml('Подписка 3x-ui', item.subscription_3xui_response_ms)
     ].join('');
 
     return `
