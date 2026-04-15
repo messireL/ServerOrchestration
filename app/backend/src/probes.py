@@ -29,6 +29,117 @@ SUBSCRIPTION_URI_RE = re.compile(r'''(?P<uri>(?:vmess|vless|trojan|ss|ssr|hyster
 BASE64_BLOB_RE = re.compile(r"[A-Za-z0-9+/_-]{120,}={0,2}")
 
 
+_HTML_LABEL_ALIASES = {
+    "id подписки": "subscription_id",
+    "subscription id": "subscription_id",
+    "статус": "profile_status",
+    "status": "profile_status",
+    "загружено": "downloaded_bytes",
+    "download": "downloaded_bytes",
+    "отправлено": "uploaded_bytes",
+    "upload": "uploaded_bytes",
+    "использование": "used_bytes",
+    "usage": "used_bytes",
+    "общий лимит": "total_bytes",
+    "total": "total_bytes",
+    "остаток": "remaining_bytes",
+    "remaining": "remaining_bytes",
+    "был(а) в сети": "last_online_text",
+    "last online": "last_online_text",
+    "срок действия": "expires_text",
+    "expiry": "expires_text",
+    "expires": "expires_text",
+}
+
+
+def _normalize_html_label(value: str) -> str:
+    normalized = (value or '').strip().casefold()
+    return re.sub(r'\s+', ' ', normalized)
+
+
+def _parse_data_size(value: str | None) -> int | None:
+    text = (value or '').strip()
+    if not text:
+        return None
+    normalized = text.replace(' ', '').replace(',', '.').upper()
+    match = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*(B|KB|KIB|MB|MIB|GB|GIB|TB|TIB|PB|PIB)?', normalized)
+    if not match:
+        return None
+    number = float(match.group(1))
+    unit = (match.group(2) or 'B').upper()
+    factors = {
+        'B': 1,
+        'KB': 1000**1, 'MB': 1000**2, 'GB': 1000**3, 'TB': 1000**4, 'PB': 1000**5,
+        'KIB': 1024**1, 'MIB': 1024**2, 'GIB': 1024**3, 'TIB': 1024**4, 'PIB': 1024**5,
+    }
+    factor = factors.get(unit)
+    if factor is None:
+        return None
+    return int(number * factor)
+
+
+def _extract_html_text_lines(source: str) -> list[str]:
+    text = re.sub(r'(?is)<(script|style|noscript).*?>.*?</\1>', ' ', source)
+    text = re.sub(r'(?is)<br\s*/?>', '\n', text)
+    text = re.sub(r'(?is)</(tr|td|th|div|p|section|article|li|ul|ol|table|tbody|thead|tfoot|h[1-6])>', '\n', text)
+    text = re.sub(r'(?is)<[^>]+>', ' ', text)
+    text = html.unescape(text)
+    text = text.replace('\xa0', ' ')
+    lines: list[str] = []
+    for raw in text.splitlines():
+        line = re.sub(r'\s+', ' ', raw).strip()
+        if line:
+            lines.append(line)
+    return lines
+
+
+def _parse_subscription_profile_from_html(source: str) -> dict[str, Any]:
+    lines = _extract_html_text_lines(source)
+    if not lines:
+        return {}
+
+    parsed: dict[str, Any] = {}
+    for index, line in enumerate(lines[:-1]):
+        alias = _HTML_LABEL_ALIASES.get(_normalize_html_label(line))
+        if not alias:
+            continue
+        value = lines[index + 1].strip()
+        if not value:
+            continue
+        parsed[alias] = value
+
+    if not parsed:
+        return {}
+
+    for key in ('downloaded_bytes', 'uploaded_bytes', 'used_bytes', 'total_bytes', 'remaining_bytes'):
+        if key in parsed:
+            parsed[f'{key}_text'] = parsed[key]
+            size_value = _parse_data_size(parsed[key])
+            if size_value is not None:
+                parsed[key] = size_value
+
+    expires_text = str(parsed.get('expires_text') or '').strip()
+    if expires_text:
+        lowered = expires_text.casefold()
+        if any(token in lowered for token in ('бесср', 'unlimited', 'never')):
+            parsed['expires_unlimited'] = True
+        else:
+            parsed['expires_unlimited'] = False
+
+    if 'used_bytes' not in parsed:
+        down = parsed.get('downloaded_bytes')
+        up = parsed.get('uploaded_bytes')
+        if isinstance(down, int) and isinstance(up, int):
+            parsed['used_bytes'] = down + up
+    if 'remaining_bytes' in parsed and 'total_bytes' in parsed and 'used_bytes' not in parsed:
+        total = parsed.get('total_bytes')
+        remaining = parsed.get('remaining_bytes')
+        if isinstance(total, int) and isinstance(remaining, int):
+            parsed['used_bytes'] = max(total - remaining, 0)
+
+    return parsed
+
+
 def _squash_probe_text(*parts: str, limit: int = 500) -> str:
     combined = " | ".join(part.strip() for part in parts if part and part.strip())
     combined = re.sub(r"\s+", " ", combined).strip()
