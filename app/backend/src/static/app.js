@@ -265,8 +265,13 @@ function buildContourDetails(item) {
       const totalLabel = Number.isFinite(totalBytes) && totalBytes > 0 ? formatBytesCompact(totalBytes) : '∞';
       parts.push(`${usedLabel}/${totalLabel}`);
     }
+    const remainingBytes = Number(xuiSub.remaining_bytes);
+    if (Number.isFinite(remainingBytes) && remainingBytes >= 0) parts.push(`rem ${formatBytesCompact(remainingBytes)}`);
     if (Number.isFinite(Number(xuiSub.days_remaining))) parts.push(`exp ${Number(xuiSub.days_remaining)}d`);
     else if (xuiSub.expires_at) parts.push(`exp ${String(xuiSub.expires_at).slice(0, 10)}`);
+    else if (xuiSub.expires_unlimited) parts.push('exp ∞');
+    else if (xuiSub.expires_text) parts.push(`exp ${String(xuiSub.expires_text)}`);
+    if (xuiSub.profile_status) parts.push(String(xuiSub.profile_status));
     if (xuiSub.encoding) parts.push(String(xuiSub.encoding));
     if (Array.isArray(xuiSub.entry_types) && xuiSub.entry_types.length) parts.push(xuiSub.entry_types.join(', '));
     if (xuiSub.profile_title) parts.push(String(xuiSub.profile_title));

@@ -358,6 +358,17 @@ def _extract_subscription_payload_from_html(text: str) -> tuple[bool, dict, str 
                 details["html_embedded"] = True
                 return True, details, None
 
+    for variant in variants:
+        profile_details = _parse_subscription_profile_from_html(variant)
+        if profile_details:
+            details = {
+                "encoding": "html-profile",
+                "entries": 0,
+                "html_embedded": True,
+                **profile_details,
+            }
+            return True, details, None
+
     return False, {"encoding": "html", "entries": 0}, "subscription endpoint returned HTML page without embedded share data"
 
 
