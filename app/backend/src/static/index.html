@@ -14,7 +14,7 @@
       document.documentElement.dataset.theme = theme;
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=0.1.53" />
+  <link rel="stylesheet" href="/static/styles.css?v=0.1.54" />
 </head>
 <body>
   <div class="app-shell">
@@ -335,101 +335,67 @@
             <div class="panel-header compact-header">
               <div>
                 <h2>Сводка по проверкам</h2>
-                <p>Быстрый срез без чтения всей таблицы глазами по диагонали.</p>
+                <p>Короткий operational-срез без чтения всей таблицы глазами по диагонали.</p>
               </div>
             </div>
             <div class="micro-stats checks-micro-grid" id="checksQuickStats"></div>
           </section>
 
-          <section class="panel">
+          <section class="panel checks-ops-panel">
             <div class="panel-header split-header">
               <div>
-                <h2>Планировщик мониторинга</h2>
-                <p>Фоновый runner для ping/SSH/HTTP/3x-ui с настраиваемыми интервалами и таймаутами.</p>
+                <h2>Быстрые действия</h2>
+                <p>Ручной запуск проверок без прыжков по разным блокам.</p>
               </div>
-              <span class="pill pill-info" id="schedulerStateBadge">scheduler: —</span>
+              <span class="pill pill-neutral" id="checksStatusCountLabel">0 серверов</span>
             </div>
-            <form class="form-stack" id="monitorSettingsForm">
-              <div class="checkbox-row">
-                <label class="check-pill"><input type="checkbox" name="scheduler_enabled" /> <span>Включить планировщик</span></label>
-              </div>
-              <div class="field-grid two-cols">
-                <label class="field">
-                  <span>Ping interval, сек</span>
-                  <input type="number" name="ping_interval_seconds" min="15" max="86400" required />
-                </label>
-                <label class="field">
-                  <span>Ping timeout, сек</span>
-                  <input type="number" name="ping_timeout_seconds" min="1" max="10" required />
-                </label>
-                <label class="field">
-                  <span>SSH interval, сек</span>
-                  <input type="number" name="ssh_interval_seconds" min="15" max="86400" required />
-                </label>
-                <label class="field">
-                  <span>SSH timeout, сек</span>
-                  <input type="number" name="tcp_timeout_seconds" min="1" max="15" required />
-                </label>
-                <label class="field">
-                  <span>HTTP interval, сек</span>
-                  <input type="number" name="http_interval_seconds" min="15" max="86400" required />
-                </label>
-                <label class="field">
-                  <span>HTTP timeout, сек</span>
-                  <input type="number" name="http_timeout_seconds" min="1" max="30" required />
-                </label>
-                <label class="field">
-                  <span>3x-ui interval, сек</span>
-                  <input type="number" name="xui_interval_seconds" min="15" max="86400" required />
-                </label>
-                <label class="field">
-                  <span>3x-ui timeout, сек</span>
-                  <input type="number" name="xui_timeout_seconds" min="1" max="30" required />
-                </label>
-                <label class="field">
-                  <span>SSL interval, сек</span>
-                  <input type="number" name="ssl_interval_seconds" min="15" max="86400" required />
-                </label>
-                <label class="field">
-                  <span>SSL timeout, сек</span>
-                  <input type="number" name="ssl_timeout_seconds" min="1" max="30" required />
-                </label>
-              </div>
-              <div class="micro-stats checks-micro-grid scheduler-stats" id="schedulerStats"></div>
-              <div class="form-actions">
-                <button class="btn btn-primary" type="submit" id="monitorSettingsSubmitBtn">Сохранить настройки мониторинга</button>
-              </div>
-            </form>
+            <div class="row-actions wrap-actions checks-action-grid">
+              <button class="btn btn-primary" id="allChecksBtn">Запустить все проверки</button>
+              <button class="btn btn-ghost" id="pingBtnChecks">Только ping</button>
+              <button class="btn btn-secondary" id="sshBtnChecks">Проверить SSH</button>
+              <button class="btn btn-secondary" id="httpBtnChecks">Проверить HTTP/HTTPS</button>
+              <button class="btn btn-secondary" id="xuiBtnChecks">Проверить 3x-ui</button>
+              <button class="btn btn-secondary" id="sslBtnChecks">Проверить SSL</button>
+            </div>
+            <div class="filter-toolbar checks-section-toolbar" id="checksSectionBar">
+              <button class="filter-chip active" type="button" data-checks-section="status">Статусы</button>
+              <button class="filter-chip" type="button" data-checks-section="monitor">Планировщик</button>
+              <button class="filter-chip" type="button" data-checks-section="history">История</button>
+              <button class="filter-chip" type="button" data-checks-section="all">Показать всё</button>
+            </div>
           </section>
 
           <section class="panel">
             <div class="panel-header split-header">
               <div>
                 <h2>Проверки доступности</h2>
-                <p>Ping, SSH, web URL, 3x-ui и SSL-проверка по подписочной ссылке/порту.</p>
+                <p>Основной экран мониторинга: состояние сервера, контуров и последней ошибки.</p>
               </div>
-              <div class="row-actions wrap-actions">
-                <button class="btn btn-secondary" id="sshBtnChecks">Проверить SSH</button>
-                <button class="btn btn-secondary" id="httpBtnChecks">Проверить HTTP/HTTPS</button>
-                <button class="btn btn-secondary" id="xuiBtnChecks">Проверить 3x-ui</button>
-                <button class="btn btn-secondary" id="sslBtnChecks">Проверить SSL</button>
-                <button class="btn btn-primary" id="allChecksBtn">Запустить все проверки</button>
-                <button class="btn btn-ghost" id="pingBtnChecks">Только ping</button>
+              <span class="pill pill-neutral" id="checksFilterResultLabel">0 строк</span>
+            </div>
+            <div class="checks-toolbar-grid">
+              <label class="field search-field checks-search-field">
+                <span>Поиск</span>
+                <input type="search" id="checksSearchInput" placeholder="Имя, host, ssh user, web URL, группа" />
+              </label>
+              <div class="checks-toolbar-side">
+                <div class="filter-toolbar" id="checksFilterBar">
+                  <button class="filter-chip active" type="button" data-checks-filter="all">Все</button>
+                  <button class="filter-chip" type="button" data-checks-filter="issues">С проблемами</button>
+                  <button class="filter-chip" type="button" data-checks-filter="alerts">С alerts</button>
+                  <button class="filter-chip" type="button" data-checks-filter="http">С HTTP</button>
+                  <button class="filter-chip" type="button" data-checks-filter="xui">С 3x-ui</button>
+                </div>
               </div>
             </div>
             <div class="table-shell">
               <table class="data-table status-table">
                 <thead>
                   <tr>
-                    <th>ID</th>
                     <th>Сервер</th>
-                    <th>Host</th>
-                    <th>SSH endpoint</th>
-                    <th>Web URL</th>
-                    <th>Ping</th>
-                    <th>SSH</th>
-                    <th>Контур</th>
-                    <th>Отклик</th>
+                    <th>Доступ</th>
+                    <th>Состояние</th>
+                    <th>Детали</th>
                     <th>Alerts</th>
                     <th>Проверка</th>
                     <th>Ошибка</th>
@@ -440,13 +406,90 @@
             </div>
           </section>
 
-          <section class="panel">
+          <section class="panel" data-checks-section-panel="monitor">
+            <div class="panel-header split-header">
+              <div>
+                <h2>Планировщик мониторинга</h2>
+                <p>Фоновый runner для ping/SSH/HTTP/3x-ui/SSL с настраиваемыми интервалами и таймаутами.</p>
+              </div>
+              <span class="pill pill-info" id="schedulerStateBadge">scheduler: —</span>
+            </div>
+            <form class="form-stack" id="monitorSettingsForm">
+              <div class="checkbox-row">
+                <label class="check-pill"><input type="checkbox" name="scheduler_enabled" /> <span>Включить планировщик</span></label>
+              </div>
+              <div class="field-grid two-cols">
+                <label class="field">
+                  <span>Интервал ping, сек</span>
+                  <input type="number" name="ping_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>Таймаут ping, сек</span>
+                  <input type="number" name="ping_timeout_seconds" min="1" max="10" required />
+                </label>
+                <label class="field">
+                  <span>Интервал SSH, сек</span>
+                  <input type="number" name="ssh_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>Таймаут SSH, сек</span>
+                  <input type="number" name="tcp_timeout_seconds" min="1" max="15" required />
+                </label>
+                <label class="field">
+                  <span>Интервал HTTP, сек</span>
+                  <input type="number" name="http_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>Таймаут HTTP, сек</span>
+                  <input type="number" name="http_timeout_seconds" min="1" max="30" required />
+                </label>
+                <label class="field">
+                  <span>Интервал 3x-ui, сек</span>
+                  <input type="number" name="xui_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>Таймаут 3x-ui, сек</span>
+                  <input type="number" name="xui_timeout_seconds" min="1" max="30" required />
+                </label>
+                <label class="field">
+                  <span>Интервал SSL, сек</span>
+                  <input type="number" name="ssl_interval_seconds" min="15" max="86400" required />
+                </label>
+                <label class="field">
+                  <span>Таймаут SSL, сек</span>
+                  <input type="number" name="ssl_timeout_seconds" min="1" max="30" required />
+                </label>
+              </div>
+              <div class="micro-stats checks-micro-grid scheduler-stats" id="schedulerStats"></div>
+              <div class="form-actions">
+                <button class="btn btn-primary" type="submit" id="monitorSettingsSubmitBtn">Сохранить настройки мониторинга</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel" data-checks-section-panel="history">
             <div class="panel-header split-header">
               <div>
                 <h2>История прогонов</h2>
                 <p>Последние результаты scheduler и ручных запусков без просмотра логов контейнера.</p>
               </div>
               <span class="pill pill-neutral" id="probeHistoryCountLabel">0 записей</span>
+            </div>
+            <div class="checks-toolbar-grid history-toolbar-grid">
+              <div class="checks-toolbar-side">
+                <div class="filter-toolbar" id="probeHistorySourceBar">
+                  <button class="filter-chip active" type="button" data-history-source="all">Все источники</button>
+                  <button class="filter-chip" type="button" data-history-source="scheduler">Scheduler</button>
+                  <button class="filter-chip" type="button" data-history-source="manual">Ручные</button>
+                </div>
+              </div>
+              <div class="checks-toolbar-side">
+                <div class="filter-toolbar" id="probeHistoryLimitBar">
+                  <button class="filter-chip" type="button" data-history-limit="10">10</button>
+                  <button class="filter-chip active" type="button" data-history-limit="25">25</button>
+                  <button class="filter-chip" type="button" data-history-limit="80">80</button>
+                </div>
+              </div>
             </div>
             <div class="table-shell">
               <table class="data-table">
@@ -587,6 +630,6 @@
     </main>
   </div>
 
-  <script src="/static/app.js?v=0.1.53"></script>
+  <script src="/static/app.js?v=0.1.54"></script>
 </body>
 </html>

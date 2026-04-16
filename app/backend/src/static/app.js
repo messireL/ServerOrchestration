@@ -13,6 +13,11 @@ const state = {
   serverSearch: '',
   groupSearch: '',
   serverFilter: 'all',
+  checksSearch: '',
+  checksFilter: 'all',
+  checksSection: 'status',
+  historySourceFilter: 'all',
+  historyLimit: 25,
   lastLoadedAt: null,
 };
 
@@ -146,6 +151,47 @@ function applyServerFilter(items) {
     default:
       return list;
   }
+}
+
+function applyChecksFilter(items) {
+  const query = (state.checksSearch || '').trim().toLowerCase();
+  let list = (items || []).filter((item) => serverMatches(item, query));
+  switch (state.checksFilter) {
+    case 'issues':
+      list = list.filter((item) => serverHasIssues(item));
+      break;
+    case 'alerts':
+      list = list.filter((item) => Number(item.active_alerts || 0) > 0);
+      break;
+    case 'http':
+      list = list.filter((item) => item.has_http_monitoring);
+      break;
+    case 'xui':
+      list = list.filter((item) => item.has_3xui);
+      break;
+    default:
+      break;
+  }
+  return list;
+}
+
+function applyProbeHistoryFilter(items) {
+  let list = items || [];
+  if (state.historySourceFilter === 'scheduler') {
+    list = list.filter((item) => item.source === 'scheduler');
+  } else if (state.historySourceFilter === 'manual') {
+    list = list.filter((item) => item.source !== 'scheduler');
+  }
+  return list.slice(0, state.historyLimit || 25);
+}
+
+function renderChecksSectionPanels() {
+  const mode = state.checksSection || 'status';
+  qa('[data-checks-section-panel]').forEach((node) => {
+    const section = node.dataset.checksSectionPanel;
+    const visible = mode === 'all' || mode === section;
+    node.classList.toggle('hidden', !visible);
+  });
 }
 
 function showMessage(type, text) {
@@ -500,10 +546,11 @@ function renderMonitorSettings(settings) {
 function renderProbeHistory(items) {
   const body = $('probeHistoryRows');
   if (!body) return;
-  const rows = items || [];
-  setText('probeHistoryCountLabel', `${rows.length} записей`);
+  const rows = applyProbeHistoryFilter(items || []);
+  const total = (items || []).length;
+  setText('probeHistoryCountLabel', `${rows.length} из ${total} записей`);
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty-cell">История прогонов пока пуста. После scheduler/manual запусков здесь появятся записи.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="empty-cell">Под выбранные фильтры история пока не попадает.</td></tr>';
     return;
   }
 
@@ -794,40 +841,57 @@ function renderGroupLinks(links) {
 function renderStatuses(items) {
   const body = $('statusRows');
   if (!body) return;
-  const filtered = applyServerFilter((items || []).filter((item) => serverMatches(item, state.serverSearch)));
+  const filtered = applyChecksFilter(items || []);
+  setText('checksStatusCountLabel', `${(items || []).length} серверов`);
+  setText('checksFilterResultLabel', `${filtered.length} строк`);
   if (!filtered.length) {
-    body.innerHTML = '<tr><td colspan="12" class="empty-cell">Серверы не найдены. Добавьте их в inventory.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="empty-cell">Под текущие фильтры серверы не попадают.</td></tr>';
     return;
   }
   body.innerHTML = filtered.map((item) => {
     const groupText = (item.groups || []).map((g) => safe(g)).join(', ') || 'Без группы';
     const contourDetails = buildContourDetails(item);
     const probePills = [
+      probeBadgeHtml('Ping', item.ping_ok, { hoverOnly: true }),
+      probeBadgeHtml('SSH', item.ssh_ok, { hoverOnly: true }),
       probeBadgeHtml('HTTP', item.http_ok, { disabled: !item.has_http_monitoring, detail: contourDetails.http || (item.http_status_code ? `HTTP ${item.http_status_code}` : ''), hoverOnly: true }),
       probeBadgeHtml('Консоль 3x-ui', item.console_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.console || (item.console_3xui_http_status ? `HTTP ${item.console_3xui_http_status}` : ''), hoverOnly: true }),
       probeBadgeHtml('Подписка 3x-ui', item.subscription_3xui_ok, { disabled: !item.has_3xui, detail: contourDetails.sub || (item.subscription_3xui_http_status ? `HTTP ${item.subscription_3xui_http_status}` : ''), hoverOnly: true }),
-      probeBadgeHtml('SSL', item.ssl_ok, { disabled: !item.has_ssl_monitoring, detail: contourDetails.ssl || '', hoverOnly: true })
+      probeBadgeHtml('SSL', item.ssl_ok, { disabled: !item.has_ssl_monitoring, detail: contourDetails.ssl || '', hoverOnly: true }),
     ].join('');
 
-    const latencyPills = [
+    const details = [
       latencyBadgeHtml('ping', item.ping_latency_ms),
       latencyBadgeHtml('ssh', item.ssh_latency_ms),
       latencyBadgeHtml('http', item.http_response_ms),
-      latencyBadgeHtml('Консоль 3x-ui', item.console_3xui_response_ms),
-      latencyBadgeHtml('Подписка 3x-ui', item.subscription_3xui_response_ms)
+      latencyBadgeHtml('консоль', item.console_3xui_response_ms),
+      latencyBadgeHtml('подписка', item.subscription_3xui_response_ms),
     ].join('');
+
+    const contourRows = [
+      item.web_url ? `<div class="muted small-text">Web: ${safe(item.web_url)}</div>` : '',
+      item.has_http_monitoring && contourDetails.http ? `<div class="muted small-text">HTTP: ${safe(contourDetails.http)}</div>` : '',
+      item.has_3xui && item.console_3xui_url ? `<div class="muted small-text">Консоль 3x-ui: ${safe(item.console_3xui_url)}${contourDetails.console ? ` · ${safe(contourDetails.console)}` : ''}</div>` : '',
+      item.has_3xui && item.subscription_3xui_url ? `<div class="muted small-text">Подписка 3x-ui: ${safe(item.subscription_3xui_url)}${contourDetails.sub ? ` · ${safe(contourDetails.sub)}` : ''}</div>` : '',
+      item.has_ssl_monitoring && contourDetails.ssl ? `<div class="muted small-text">SSL: ${safe(contourDetails.ssl)}</div>` : '',
+    ].filter(Boolean).join('');
 
     return `
       <tr>
-        <td>${safe(item.id)}</td>
-        <td><strong>${safe(item.name)}</strong><div class="muted small-text clamp-2">${groupText}</div></td>
-        <td><span class="code-text">${safe(item.host)}</span></td>
-        <td><span class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</span></td>
-        <td>${compactUrlHtml(item.web_url, 'не задан')}</td>
-        <td>${statusHtml(item.ping_ok)}</td>
-        <td>${statusHtml(item.ssh_ok)}</td>
+        <td>
+          <strong>${safe(item.name)}</strong>
+          <div class="muted small-text clamp-2">${groupText}</div>
+          <div class="code-text">${safe(item.host)}</div>
+        </td>
+        <td>
+          <div class="code-text">${safe(item.ssh_user)}:${safe(item.ssh_port)}</div>
+          ${item.web_url ? `<div class="muted small-text clamp-2">${safe(item.web_url)}</div>` : '<div class="muted small-text">Web URL не задан</div>'}
+        </td>
         <td><div class="status-badge-stack">${probePills}</div></td>
-        <td><div class="metric-pill-stack">${latencyPills}</div></td>
+        <td>
+          <div class="metric-pill-stack">${details}</div>
+          <div class="checks-detail-stack">${contourRows || '<div class="muted small-text">Дополнительных деталей пока нет.</div>'}</div>
+        </td>
         <td>${Number(item.active_alerts || 0) > 0 ? `<span class="pill pill-danger">${safe(item.active_alerts)}</span>` : '<span class="pill pill-success">0</span>'}</td>
         <td><span class="date-chip">${formatTs(item.last_check_at)}</span></td>
         <td><span class="cell-soft">${errorCellHtml(item.last_error)}</span></td>
@@ -861,7 +925,12 @@ function refreshUi() {
   renderGroups(state.groups || []);
   renderGroupLinks(state.groupLinks || []);
   renderStatuses(state.statuses || []);
+  renderChecksSectionPanels();
   qa('#serverFilterBar .filter-chip').forEach((node) => node.classList.toggle('active', node.dataset.filter === state.serverFilter));
+  qa('#checksFilterBar .filter-chip').forEach((node) => node.classList.toggle('active', node.dataset.checksFilter === state.checksFilter));
+  qa('#checksSectionBar .filter-chip').forEach((node) => node.classList.toggle('active', node.dataset.checksSection === state.checksSection));
+  qa('#probeHistorySourceBar .filter-chip').forEach((node) => node.classList.toggle('active', node.dataset.historySource === state.historySourceFilter));
+  qa('#probeHistoryLimitBar .filter-chip').forEach((node) => node.classList.toggle('active', Number(node.dataset.historyLimit || 0) === Number(state.historyLimit || 25)));
   populateSelect('attachGroupSelect', state.groups || [], 'Сначала создайте группу', (g) => `${g.name} (#${g.id})`);
   populateSelect('attachServerSelect', state.servers || [], 'Сначала добавьте сервер', (s) => `${s.name} (${s.host})`);
 }
@@ -1317,8 +1386,25 @@ function wire() {
   $('groupCancelBtn')?.addEventListener('click', resetGroupForm);
   $('serverSearchInput')?.addEventListener('input', (e) => { state.serverSearch = e.target.value.trim().toLowerCase(); refreshUi(); });
   $('groupSearchInput')?.addEventListener('input', (e) => { state.groupSearch = e.target.value.trim().toLowerCase(); refreshUi(); });
+  $('checksSearchInput')?.addEventListener('input', (e) => { state.checksSearch = e.target.value.trim().toLowerCase(); refreshUi(); });
   qa('#serverFilterBar .filter-chip').forEach((node) => node.addEventListener('click', () => {
     state.serverFilter = node.dataset.filter || 'all';
+    refreshUi();
+  }));
+  qa('#checksFilterBar .filter-chip').forEach((node) => node.addEventListener('click', () => {
+    state.checksFilter = node.dataset.checksFilter || 'all';
+    refreshUi();
+  }));
+  qa('#checksSectionBar .filter-chip').forEach((node) => node.addEventListener('click', () => {
+    state.checksSection = node.dataset.checksSection || 'status';
+    refreshUi();
+  }));
+  qa('#probeHistorySourceBar .filter-chip').forEach((node) => node.addEventListener('click', () => {
+    state.historySourceFilter = node.dataset.historySource || 'all';
+    refreshUi();
+  }));
+  qa('#probeHistoryLimitBar .filter-chip').forEach((node) => node.addEventListener('click', () => {
+    state.historyLimit = Number(node.dataset.historyLimit || 25);
     refreshUi();
   }));
   document.body.addEventListener('click', handleActionClick);

@@ -709,28 +709,72 @@ textarea { resize: vertical; }
   table-layout: fixed;
 }
 
+.checks-ops-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.checks-action-grid {
+  justify-content: flex-start;
+}
+
+.checks-section-toolbar {
+  margin-bottom: 0;
+}
+
+.checks-toolbar-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(240px, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+  align-items: end;
+}
+
+.history-toolbar-grid {
+  grid-template-columns: minmax(260px, 1fr) auto;
+}
+
+.checks-toolbar-side {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.checks-search-field {
+  margin-bottom: 0;
+}
+
+.checks-detail-stack {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
 .status-table th:nth-child(1),
-.status-table td:nth-child(1) { width: 40px; }
+.status-table td:nth-child(1) { width: 200px; }
 .status-table th:nth-child(2),
-.status-table td:nth-child(2) { width: 170px; }
+.status-table td:nth-child(2) { width: 180px; }
 .status-table th:nth-child(3),
-.status-table td:nth-child(3) { width: 120px; }
+.status-table td:nth-child(3) { width: 270px; }
 .status-table th:nth-child(4),
-.status-table td:nth-child(4) { width: 118px; }
+.status-table td:nth-child(4) { width: 360px; }
 .status-table th:nth-child(5),
-.status-table td:nth-child(5) { width: 170px; }
+.status-table td:nth-child(5) { width: 84px; }
 .status-table th:nth-child(6),
-.status-table td:nth-child(6),
+.status-table td:nth-child(6) { width: 132px; }
 .status-table th:nth-child(7),
-.status-table td:nth-child(7),
-.status-table th:nth-child(10),
-.status-table td:nth-child(10) { width: 84px; }
-.status-table th:nth-child(8),
-.status-table td:nth-child(8) { width: 280px; }
-.status-table th:nth-child(9),
-.status-table td:nth-child(9) { width: 220px; }
-.status-table th:nth-child(11),
-.status-table td:nth-child(11) { width: 132px; }
+.status-table td:nth-child(7) { width: 260px; }
+
+@media (max-width: 1320px) {
+  .checks-toolbar-grid,
+  .history-toolbar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .checks-toolbar-side {
+    justify-content: flex-start;
+  }
+}
 
 .status-badge-stack,
 .metric-pill-stack {
